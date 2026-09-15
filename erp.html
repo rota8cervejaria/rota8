@@ -6597,9 +6597,9 @@ window.mostrarFormERP = function(id) {
     let f = document.getElementById(id);
     if(f) {
         f.classList.add('visivel');
-        if(id==='formSalProducao') { setTimeout(popularSelectSalLoteProducao, 50); setTimeout(popularSelectSalLoteProducao, 1000); }
-        if(id.includes('Lupulo')||id.includes('lupulo')) { setTimeout(popularSelectLupuloProducao, 50); setTimeout(popularSelectLupuloProducao, 1000); setTimeout(_calcIBUPreview, 100); }
-        if(id.includes('Levedura')||id.includes('levedura')) { setTimeout(popularSelectLeveduraProducao, 50); setTimeout(popularSelectLeveduraProducao, 1000); setTimeout(_updatePitchRateBox, 100); }
+        if(id==='formSalProducao') { setTimeout(popularSelectSalLoteProducao, 50); setTimeout(popularSelectSalLoteProducao, 1000); setTimeout(function(){ if(!document.getElementById('salProdLoteSelect')) console.warn('[Rota8] Dropdown de sal (salProdLoteSelect) ainda não existe no DOM após 1.5s — tela formSalProducao'); }, 1500); }
+        if(id.includes('Lupulo')||id.includes('lupulo')) { setTimeout(popularSelectLupuloProducao, 50); setTimeout(popularSelectLupuloProducao, 1000); setTimeout(_calcIBUPreview, 100); setTimeout(function(){ if(!document.getElementById('lupuloSelectProducao')) console.warn('[Rota8] Dropdown de lúpulo (lupuloSelectProducao) ainda não existe no DOM após 1.5s'); }, 1500); }
+        if(id.includes('Levedura')||id.includes('levedura')) { setTimeout(popularSelectLeveduraProducao, 50); setTimeout(popularSelectLeveduraProducao, 1000); setTimeout(_updatePitchRateBox, 100); setTimeout(function(){ if(!document.getElementById('leveduraSelectProducao')) console.warn('[Rota8] Dropdown de levedura (leveduraSelectProducao) ainda não existe no DOM após 1.5s'); }, 1500); }
         if(id.includes('Insumo')) {
             let tipo = id.replace('formInsumo','').replace('Producao','').toLowerCase();
             setTimeout(function() { popularSelectInsumoPorTipo(tipo); }, 50);
