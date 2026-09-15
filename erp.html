@@ -14179,7 +14179,8 @@ function _iniciarAuthListener() {
         // é aberta vinda de um login que já deu certo em index.html, ou por
         // alguém com sessão do Firebase ainda válida. Se houver sessão, entra
         // direto no ERP; sem sessão, mantém o comportamento padrão abaixo
-        // (QR Code público ou landing), igual ao index.html.
+        // (QR Code público ou tela de login — erp.html é a área restrita,
+        // não deve cair na landing page pública como o index.html).
         if (user) {
             usuarioAtual = user;
             carregarDadosFirebase();
@@ -14204,7 +14205,7 @@ function _iniciarAuthListener() {
         } else if(window._qrEstiloParam) {
             mostrarEstiloPub(window._qrEstiloParam);
         } else {
-            mostrarLandingPage();
+            mostrarLoginFirebase();
         }
     });
 }
