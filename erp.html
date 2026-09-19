@@ -5069,7 +5069,6 @@ function carregarERPSistema() {
     '<div class="erp-drawer-section">Vendas e Finanças</div>',
     '<button class="erp-drawer-item" onclick="window._erpNav(\'telaVendas\')"><i class="fas fa-cash-register" style="color:#8b5cf6"></i>Venda/Transferência</button>',
     '<button class="erp-drawer-item" onclick="window._erpNav(\'telaCustos\')"><i class="fas fa-coins" style="color:#fbbf24"></i>Custos</button>',
-    '<button class="erp-drawer-item" onclick="_r8AbrirFinanceiro(\'dre\')"><i class="fas fa-chart-bar" style="color:#10b981"></i>DRE Mensal</button>',
     '<button class="erp-drawer-item" onclick="_r8AbrirFinanceiro(\'dash\')"><i class="fas fa-wallet" style="color:#1d4ed8"></i>Financeiro</button>',
 
     '<div class="erp-drawer-section">Gestão</div>',
@@ -6658,7 +6657,7 @@ window.renderDashboard = function() {
         {label:'Lotes Ativos', ico:'fa-tasks', cor:'#F59E0B', tela:'telaLotesAtivos'},
         {label:'Curva Ferm.', ico:'fa-chart-line', cor:'#8b5cf6', tela:'telaCurvaFermentacao'},
         {label:'Análise Sensorial', ico:'fa-flask', cor:'#c49a2b', tela:'telaAnalise'},
-        {label:'DRE Mensal', ico:'fa-chart-bar', cor:'#10b981', tela:'telaFinanceiro'},
+        {label:'Financeiro', ico:'fa-wallet', cor:'#1d4ed8', tela:'telaFinanceiro'},
         {label:'Câmara Fria', ico:'fa-temperature-low', cor:'#3b82f6', tela:'telaControleCamara'},
         {label:'Vendas PDV', ico:'fa-store', cor:'#16a34a', tela:'telaVendasPDV'},
         {label:'Relatórios', ico:'fa-file-chart-bar', cor:'#6366f1', tela:'telaRelatorios'}
@@ -16366,7 +16365,6 @@ if(document.readyState === 'loading'){
             <div class="card-menu" onclick="irParaTelaERP('telaCustos')"><i class="fas fa-coins" style="color:#FBBF24"></i><span>Custos</span></div>
             <div class="card-menu" onclick="irParaTelaERP('telaRastreabilidade')"><i class="fas fa-qrcode" style="color:#EC4899"></i><span>Rastreabilidade</span></div>
             <div class="card-menu" onclick="irParaTelaERP('telaSanitizacao')"><i class="fas fa-pump-soap" style="color:#10B981"></i><span>Sanitização</span><span class="card-menu-badge" id="badgeSanitizacao"></span></div>
-            <div class="card-menu" onclick="_r8AbrirFinanceiro('dre')"><i class="fas fa-chart-bar" style="color:#10b981"></i><span>DRE Mensal</span></div>
             <div class="card-menu" onclick="_r8AbrirFinanceiro('dash')"><i class="fas fa-wallet" style="color:#1d4ed8"></i><span>Financeiro</span></div>
             <div class="card-menu" onclick="irParaTelaERP('telaRelatorios')"><i class="fas fa-file-chart-bar" style="color:#6366f1"></i><span>Relatórios</span></div>
             <div class="card-menu" onclick="irParaTelaERP('telaAuditoria')"><i class="fas fa-history" style="color:#64748b"></i><span>Auditoria</span></div>
@@ -17592,6 +17590,9 @@ if(document.readyState === 'loading'){
 <div id="telaFinanceiro" class="tela">
 
 <div class="hdr">
+  <button onclick="irParaTelaERP('telaMenu')" style="position:absolute;top:16px;left:16px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:10px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer;" title="Voltar ao Menu Principal">
+    <i class="fas fa-arrow-left" style="color:#c49a2b;font-size:15px"></i>
+  </button>
   <button onclick="abrirAjustes()" style="position:absolute;top:16px;right:16px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:10px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer;" title="Ajustes / Backup">
     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#c49a2b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
   </button>
