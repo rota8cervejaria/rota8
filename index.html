@@ -196,6 +196,56 @@
     _carregarSdkFirebase('https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js');
     _carregarSdkFirebase('https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js');
     </script>
+    <!-- LOG DE ERRO CENTRALIZADO (2026-09-22) — adição pura, não altera nenhum
+         comportamento existente. Observa erros de JS e promises rejeitadas e tenta
+         gravar um registro em erp/rota8cervejaria/logsErro para diagnóstico remoto
+         (ex.: erro no celular de alguém em campo, numa rota pública de QR Code).
+         Requer esta regra no Console do Firebase para gravar mesmo sem login:
+           "logsErro": { ".read": "auth != null", ".write": true }
+         Enquanto essa regra não existir, a gravação falha em silêncio e nada muda. -->
+    <script>
+    (function(){
+        var _r8UltimoEnvioLog = 0;
+        function _r8EnviarLog(entry) {
+            try {
+                var db = window.db;
+                if (!db || typeof db.ref !== 'function') return;
+                var agora = Date.now();
+                if (agora - _r8UltimoEnvioLog < 5000) return; // throttle: no máx. 1 gravação a cada 5s
+                _r8UltimoEnvioLog = agora;
+                db.ref('erp/rota8cervejaria/logsErro').push(entry).catch(function(){});
+            } catch(e) {}
+        }
+        function _r8Registrar(mensagem, origem, extra) {
+            try {
+                var email = null;
+                try { email = (usuarioAtual && usuarioAtual.email) ? usuarioAtual.email : null; } catch(e) {}
+                var entry = {
+                    mensagem: String(mensagem == null ? '' : mensagem).slice(0, 500),
+                    origem: String(origem || '').slice(0, 300),
+                    url: window.location.href,
+                    build: window.R8_BUILD || '',
+                    usuario: email,
+                    userAgent: navigator.userAgent,
+                    timestamp: Date.now()
+                };
+                if (extra) entry.extra = String(extra).slice(0, 1000);
+                _r8EnviarLog(entry);
+            } catch(e) {}
+        }
+        window.addEventListener('error', function(ev) {
+            try {
+                _r8Registrar(ev && ev.message, (ev && ev.filename || '') + ':' + (ev && ev.lineno || '') + ':' + (ev && ev.colno || ''), ev && ev.error && ev.error.stack);
+            } catch(e) {}
+        });
+        window.addEventListener('unhandledrejection', function(ev) {
+            try {
+                var r = ev && ev.reason;
+                _r8Registrar(r && r.message ? r.message : String(r), 'promise', r && r.stack);
+            } catch(e) {}
+        });
+    })();
+    </script>
     <style>
         *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
         :root{--primary:#c49a2b;--primary-dark:#a47e1f;--dark:#2c1810;--dark-light:#4a2e1f;--bege:#f5efe6;--bege-dark:#e8dccc;--text:#2c3e50;--white:#fff;--success:#10b981;--warning:#f59e0b;--danger:#ef4444}
@@ -11589,14 +11639,30 @@ window.mostrarDestinoVendaPub = function(id) {
     try {
         var fbDb = window.db || (typeof firebase !== 'undefined' && firebase.apps && firebase.apps.length ? firebase.database() : null);
         if (!fbDb) { _render([], [], []); return; }
-        Promise.all([
-            fbDb.ref('erp/rota8cervejaria/dados/fichasTecnicas').once('value'),
-            fbDb.ref('erp/rota8cervejaria/dados/vendasPDV').once('value'),
-            fbDb.ref('erp/rota8cervejaria/dados/vendasTaps').once('value')
-        ]).then(function(snaps){
-            var norm = function(v){ v = v || []; return Array.isArray(v) ? v : Object.values(v); };
-            _render(norm(snaps[0].val()), norm(snaps[1].val()), norm(snaps[2].val()));
-        }).catch(function(){ _render([], [], []); });
+        function _fallbackVendaAntiga() {
+            // Comportamento original (pré 2026-09-22), mantido só como
+            // fallback pra QR Code de venda já impresso antes da cópia
+            // segura existir. Lê o node completo de vendasPDV/vendasTaps.
+            Promise.all([
+                fbDb.ref('erp/rota8cervejaria/dados/fichasTecnicas').once('value'),
+                fbDb.ref('erp/rota8cervejaria/dados/vendasPDV').once('value'),
+                fbDb.ref('erp/rota8cervejaria/dados/vendasTaps').once('value')
+            ]).then(function(snaps){
+                var norm = function(v){ v = v || []; return Array.isArray(v) ? v : Object.values(v); };
+                _render(norm(snaps[0].val()), norm(snaps[1].val()), norm(snaps[2].val()));
+            }).catch(function(){ _render([], [], []); });
+        }
+        // 2026-09-22: tenta primeiro o registro público redigido (sem
+        // valor/preço/forma de pagamento), gravado em "rastreioPublico"
+        // (node já existente nas regras do Firebase) — só cai no node
+        // completo antigo se essa venda for anterior à cópia segura.
+        fbDb.ref('erp/rota8cervejaria/rastreioPublico/vendas/' + id).once('value').then(function(snapSeguro){
+            var seguro = snapSeguro.val();
+            if (!seguro) { _fallbackVendaAntiga(); return; }
+            var vSeguro = { id: seguro.id, tipo: seguro.tipo, lote: seguro.lote, estilo: seguro.estilo, data: seguro.data, dataRetorno: seguro.dataRetorno, destino: seguro.destino, quantidade: seguro.quantidade, tipoEmbalagem: seguro.tipoEmbalagem, observacoes: seguro.observacoes };
+            var fichaSeguro = seguro.dataProducao ? [{ lote: seguro.lote, dataProducao: seguro.dataProducao }] : [];
+            _render(fichaSeguro, seguro.tipo === 'TAP' ? [] : [vSeguro], seguro.tipo === 'TAP' ? [vSeguro] : []);
+        }).catch(_fallbackVendaAntiga);
     } catch(e) { _render([], [], []); }
 };
 
