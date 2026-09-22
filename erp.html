@@ -196,6 +196,56 @@
     _carregarSdkFirebase('https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js');
     _carregarSdkFirebase('https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js');
     </script>
+    <!-- LOG DE ERRO CENTRALIZADO (2026-09-22) — adição pura, não altera nenhum
+         comportamento existente. Observa erros de JS e promises rejeitadas e tenta
+         gravar um registro em erp/rota8cervejaria/logsErro para diagnóstico remoto
+         (ex.: erro no celular de alguém em campo, numa rota pública de QR Code).
+         Requer esta regra no Console do Firebase para gravar mesmo sem login:
+           "logsErro": { ".read": "auth != null", ".write": true }
+         Enquanto essa regra não existir, a gravação falha em silêncio e nada muda. -->
+    <script>
+    (function(){
+        var _r8UltimoEnvioLog = 0;
+        function _r8EnviarLog(entry) {
+            try {
+                var db = window.db;
+                if (!db || typeof db.ref !== 'function') return;
+                var agora = Date.now();
+                if (agora - _r8UltimoEnvioLog < 5000) return; // throttle: no máx. 1 gravação a cada 5s
+                _r8UltimoEnvioLog = agora;
+                db.ref('erp/rota8cervejaria/logsErro').push(entry).catch(function(){});
+            } catch(e) {}
+        }
+        function _r8Registrar(mensagem, origem, extra) {
+            try {
+                var email = null;
+                try { email = (usuarioAtual && usuarioAtual.email) ? usuarioAtual.email : null; } catch(e) {}
+                var entry = {
+                    mensagem: String(mensagem == null ? '' : mensagem).slice(0, 500),
+                    origem: String(origem || '').slice(0, 300),
+                    url: window.location.href,
+                    build: window.R8_BUILD || '',
+                    usuario: email,
+                    userAgent: navigator.userAgent,
+                    timestamp: Date.now()
+                };
+                if (extra) entry.extra = String(extra).slice(0, 1000);
+                _r8EnviarLog(entry);
+            } catch(e) {}
+        }
+        window.addEventListener('error', function(ev) {
+            try {
+                _r8Registrar(ev && ev.message, (ev && ev.filename || '') + ':' + (ev && ev.lineno || '') + ':' + (ev && ev.colno || ''), ev && ev.error && ev.error.stack);
+            } catch(e) {}
+        });
+        window.addEventListener('unhandledrejection', function(ev) {
+            try {
+                var r = ev && ev.reason;
+                _r8Registrar(r && r.message ? r.message : String(r), 'promise', r && r.stack);
+            } catch(e) {}
+        });
+    })();
+    </script>
     <style>
         *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
         :root{--primary:#c49a2b;--primary-dark:#a47e1f;--dark:#2c1810;--dark-light:#4a2e1f;--bege:#f5efe6;--bege-dark:#e8dccc;--text:#2c3e50;--white:#fff;--success:#10b981;--warning:#f59e0b;--danger:#ef4444}
@@ -11260,6 +11310,36 @@ function darBaixaEstoque(loteChave, qtd, tipo, destino) {
     return true;
 }
 
+// ═══ PUBLICAÇÃO SEGURA DA VENDA (2026-09-22) — grava uma cópia redigida (sem
+// valor/preço/forma de pagamento) num nó separado e indexado pelo id real da
+// venda, pra rota pública de QR (?venda=) parar de expor o histórico
+// financeiro completo ao ler vendasPDV/vendasTaps inteiros. Escrita direta e
+// isolada — não entra no payload do salvamento geral (dadosERP), então nunca
+// é sobrescrita/apagada pelo save periódico. Falha em silêncio se offline;
+// nunca bloqueia o registro da venda. Usa o node "rastreioPublico" que já
+// existe nas regras do Firebase (leitura pública, escrita só de usuário
+// aprovado) — nenhuma regra nova precisa ser criada.
+function _r8PublicarVendaSegura(venda) {
+    try {
+        var db = window.db;
+        if (!db || typeof db.ref !== 'function' || !venda || !venda.id) return;
+        var ficha = (dadosERP.fichasTecnicas || []).find(function(f){ return f && f.lote === venda.lote; });
+        db.ref('erp/rota8cervejaria/rastreioPublico/vendas/' + venda.id).set({
+            id: venda.id,
+            tipo: venda.tipo || '',
+            lote: venda.lote || '',
+            estilo: venda.estilo || '',
+            dataProducao: ficha ? (ficha.dataProducao || null) : null,
+            data: venda.data || '',
+            dataRetorno: venda.dataRetorno || null,
+            destino: venda.destino || (venda.tipo === 'TAP' ? 'TAPs Brewpub' : ''),
+            quantidade: venda.quantidade || 0,
+            tipoEmbalagem: venda.tipoEmbalagem || '',
+            observacoes: venda.observacoes || ''
+        }).catch(function(){});
+    } catch(e) {}
+}
+
 function salvarVendaPDV(){
     let loteChave=document.getElementById('vendaLotePDV')?.value;
     let data=document.getElementById('vendaDataPDV')?.value;
@@ -11274,8 +11354,10 @@ function salvarVendaPDV(){
     if(!prod){R8.toast.erro('Lote/embalagem não encontrado.');return;}
     if(!darBaixaEstoque(loteChave,qtd,'PDV',destino))return;
     if(!dadosERP.vendasPDV)dadosERP.vendasPDV=[];
-    dadosERP.vendasPDV.push({id:'V'+Date.now()+Math.random().toString(36).slice(2,7),tipo:'PDV',lote,tipoEmbalagem:prod.tipoEmbalagem||'',embalagemCodigo:prod.embalagemCodigo||'',embalagemDescricao:prod.embalagemDescricao||'',data,destino,estilo:prod.estilo,quantidade:qtd,precoPorLitro:preco,valorTotal:(qtd*preco),pagamento,observacoes:obs});
+    var _novaVendaPDV={id:'V'+Date.now()+Math.random().toString(36).slice(2,7),tipo:'PDV',lote,tipoEmbalagem:prod.tipoEmbalagem||'',embalagemCodigo:prod.embalagemCodigo||'',embalagemDescricao:prod.embalagemDescricao||'',data,destino,estilo:prod.estilo,quantidade:qtd,precoPorLitro:preco,valorTotal:(qtd*preco),pagamento,observacoes:obs};
+    dadosERP.vendasPDV.push(_novaVendaPDV);
     salvarDadosLocal();
+    _r8PublicarVendaSegura(_novaVendaPDV);
     document.getElementById('vendaLotePDV').value='';document.getElementById('vendaEstiloPDV').value='';document.getElementById('vendaDataPDV').value=obterData();document.getElementById('vendaNomePDV').value='';document.getElementById('vendaQtdePDV').value='';document.getElementById('vendaObsPDV').value='';var pEl=document.getElementById('vendaPrecoPDV');if(pEl)pEl.value='';var tEl=document.getElementById('vendaTotalPDV');if(tEl){tEl.value='';tEl.style.background='#f0fdf4';}var pgEl=document.getElementById('vendaPagamentoPDV');if(pgEl)pgEl.value='';
     R8.toast.ok('Venda PDV registrada — Lote: '+lote+' | '+qtd+'L');
     aplicarFiltrosVendasPDV();atualizarTabelaProdutoAcabado();popularSelectLotesDisponveis('vendaLotePDV','vendaEstiloPDV');
@@ -11297,8 +11379,10 @@ function salvarVendaTAP(){
     if(!prod){R8.toast.erro('Lote/embalagem não encontrado.');return;}
     if(!darBaixaEstoque(loteChave,qtd,'TAP','TAPs Brewpub'))return;
     if(!dadosERP.vendasTaps)dadosERP.vendasTaps=[];
-    dadosERP.vendasTaps.push({id:'V'+Date.now()+Math.random().toString(36).slice(2,7),tipo:'TAP',lote,tipoEmbalagem:prod.tipoEmbalagem||'',embalagemCodigo:prod.embalagemCodigo||'',embalagemDescricao:prod.embalagemDescricao||'',data,estilo:prod.estilo,quantidade:qtd,precoPorLitro:preco,valorTotal:(qtd*preco),pagamento,observacoes:obs,saldoCamaraFriaApos:prod.camaraFria});
+    var _novaVendaTAP={id:'V'+Date.now()+Math.random().toString(36).slice(2,7),tipo:'TAP',lote,tipoEmbalagem:prod.tipoEmbalagem||'',embalagemCodigo:prod.embalagemCodigo||'',embalagemDescricao:prod.embalagemDescricao||'',data,estilo:prod.estilo,quantidade:qtd,precoPorLitro:preco,valorTotal:(qtd*preco),pagamento,observacoes:obs,saldoCamaraFriaApos:prod.camaraFria};
+    dadosERP.vendasTaps.push(_novaVendaTAP);
     salvarDadosLocal();
+    _r8PublicarVendaSegura(_novaVendaTAP);
     document.getElementById('vendaLoteTAP').value='';document.getElementById('vendaEstiloTAP').value='';document.getElementById('vendaDataTAP').value=obterData();document.getElementById('vendaQtdeTAP').value='';document.getElementById('vendaObsTAP').value='';var pEl=document.getElementById('vendaPrecoTAP');if(pEl)pEl.value='';var tEl=document.getElementById('vendaTotalTAP');if(tEl){tEl.value='';tEl.style.background='#f0fdf4';}var pgEl=document.getElementById('vendaPagamentoTAP');if(pgEl)pgEl.value='';
     R8.toast.ok('Venda TAP registrada — Lote: '+lote+' | '+qtd+'L');
     aplicarFiltrosVendasTAP();atualizarTabelaProdutoAcabado();popularSelectLotesDisponveis('vendaLoteTAP','vendaEstiloTAP');
