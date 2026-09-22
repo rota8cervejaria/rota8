@@ -11340,6 +11340,35 @@ function _r8PublicarVendaSegura(venda) {
     } catch(e) {}
 }
 
+// ═══ SINCRONIZAÇÃO VENDA → FINANCEIRO (2026-09-22) — espelha a venda
+// PDV/TAP recém-salva como um lançamento no bloco Financeiro > Vendas
+// (localStorage, chave r8v), pra esse bloco parar de exigir digitação manual.
+// Idempotente (checa origemId antes de duplicar). getVendas/setVendas/uid/
+// round2 só existem depois que o script inteiro carrega, mas essa função só
+// roda em resposta a clique do usuário (bem depois disso), então é seguro.
+function _r8SincronizarVendaFinanceiro(venda) {
+    try {
+        if (typeof getVendas !== 'function' || typeof setVendas !== 'function' || !venda || !venda.id) return;
+        var vendas = getVendas();
+        if (vendas.some(function(v){ return v.origemId === venda.id; })) return;
+        var ehTAP = venda.tipo === 'TAP';
+        var desc = (ehTAP ? 'Transferência TAP' : 'Venda PDV') + ' — Lote ' + (venda.lote || '') + (venda.destino ? (' — ' + venda.destino) : '');
+        vendas.push({
+            id: (typeof uid === 'function') ? uid() : ('sync_' + Date.now()),
+            data: venda.data || '',
+            valor: (typeof round2 === 'function') ? round2(venda.valorTotal || 0) : (venda.valorTotal || 0),
+            tipo: 'Balcão / Presencial',
+            descricao: desc,
+            pagamento: venda.pagamento || '',
+            status: (venda.pagamento === 'A prazo') ? 'pendente' : 'recebido',
+            criadoEm: new Date().toISOString(),
+            origemId: venda.id,
+            origemTipo: venda.tipo || ''
+        });
+        setVendas(vendas);
+    } catch(e) {}
+}
+
 function salvarVendaPDV(){
     let loteChave=document.getElementById('vendaLotePDV')?.value;
     let data=document.getElementById('vendaDataPDV')?.value;
@@ -11358,6 +11387,7 @@ function salvarVendaPDV(){
     dadosERP.vendasPDV.push(_novaVendaPDV);
     salvarDadosLocal();
     _r8PublicarVendaSegura(_novaVendaPDV);
+    _r8SincronizarVendaFinanceiro(_novaVendaPDV);
     document.getElementById('vendaLotePDV').value='';document.getElementById('vendaEstiloPDV').value='';document.getElementById('vendaDataPDV').value=obterData();document.getElementById('vendaNomePDV').value='';document.getElementById('vendaQtdePDV').value='';document.getElementById('vendaObsPDV').value='';var pEl=document.getElementById('vendaPrecoPDV');if(pEl)pEl.value='';var tEl=document.getElementById('vendaTotalPDV');if(tEl){tEl.value='';tEl.style.background='#f0fdf4';}var pgEl=document.getElementById('vendaPagamentoPDV');if(pgEl)pgEl.value='';
     R8.toast.ok('Venda PDV registrada — Lote: '+lote+' | '+qtd+'L');
     aplicarFiltrosVendasPDV();atualizarTabelaProdutoAcabado();popularSelectLotesDisponveis('vendaLotePDV','vendaEstiloPDV');
@@ -11383,6 +11413,7 @@ function salvarVendaTAP(){
     dadosERP.vendasTaps.push(_novaVendaTAP);
     salvarDadosLocal();
     _r8PublicarVendaSegura(_novaVendaTAP);
+    _r8SincronizarVendaFinanceiro(_novaVendaTAP);
     document.getElementById('vendaLoteTAP').value='';document.getElementById('vendaEstiloTAP').value='';document.getElementById('vendaDataTAP').value=obterData();document.getElementById('vendaQtdeTAP').value='';document.getElementById('vendaObsTAP').value='';var pEl=document.getElementById('vendaPrecoTAP');if(pEl)pEl.value='';var tEl=document.getElementById('vendaTotalTAP');if(tEl){tEl.value='';tEl.style.background='#f0fdf4';}var pgEl=document.getElementById('vendaPagamentoTAP');if(pgEl)pgEl.value='';
     R8.toast.ok('Venda TAP registrada — Lote: '+lote+' | '+qtd+'L');
     aplicarFiltrosVendasTAP();atualizarTabelaProdutoAcabado();popularSelectLotesDisponveis('vendaLoteTAP','vendaEstiloTAP');
@@ -17901,7 +17932,7 @@ if(document.readyState === 'loading'){
 <!-- VENDAS -->
 <div id="page-vendas" class="page">
   <div class="pg-title">Vendas</div>
-  <div class="pg-sub">Registre as receitas do período</div>
+  <div class="pg-sub">Sincronizado automaticamente de Vendas/Transferência (PDV/TAP) — sem digitação manual</div>
 
   <div class="acum-card">
     <div class="mes-chip">
@@ -17915,10 +17946,10 @@ if(document.readyState === 'loading'){
     <div class="ticket-medio">Ticket médio: <span id="venda-ticket">—</span></div>
   </div>
 
-  <button class="btn-add-reg" onclick="abrirNovaVenda()">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-    + Novo Lançamento
-  </button>
+  <!-- 2026-09-22: botão "+ Novo Lançamento" removido de propósito — vendas
+       só podem ser lançadas em Vendas/Transferência (PDV/TAP) e chegam aqui
+       sincronizadas automaticamente. vd-form-wrap continua no DOM (inerte,
+       nunca aberto) só pra não quebrar editarVenda em registros antigos. -->
 
   <div id="vd-form-wrap" style="display:none">
     <div class="form-block">
@@ -19105,7 +19136,12 @@ function salvarCompra(){
   showToast('Compra registrada com sucesso!'+(nEntradas?' Entrada lançada no Cadastro e no Estoque de Insumos.':''),'ok');
   renderHistCompras();
   renderDash();
-  if(nEntradas)finAtualizarTelasInsumos();
+  if(nEntradas){
+    // 2026-09-22: faltava persistir no Firebase — a entrada em dadosERP.insumos
+    // ficava só na memória da sessão até alguma outra ação salvar por acaso.
+    try{ salvarDadosLocal(); }catch(e){}
+    finAtualizarTelasInsumos();
+  }
 }
 
 function renderHistCompras(){
@@ -19818,7 +19854,7 @@ function renderHistVendas(){
         '<div class="lanc-val receber">'+fmtBRL(v.valor)+'</div>'+
         '<span class="lanc-status '+(v.status==='recebido'?'pago':'pend')+'">'+(v.status==='recebido'?'Recebido':'A Receber')+'</span>'+
       '</div>'+
-      '<button class="r8-btn-acao r8-btn-editar" onclick="editarVenda(\''+v.id+'\')" title="Editar"><i class="fas fa-pen"></i></button>'+
+      (v.origemId?'':'<button class="r8-btn-acao r8-btn-editar" onclick="editarVenda(\''+v.id+'\')" title="Editar"><i class="fas fa-pen"></i></button>')+
       '<button class="r8-btn-acao r8-btn-excluir" onclick="excluirVenda(\''+v.id+'\')" title="Excluir"><i class="fas fa-trash"></i></button>'+
     '</div>';
   }).join('');
