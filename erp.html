@@ -11340,16 +11340,25 @@ function _r8PublicarVendaSegura(venda) {
     } catch(e) {}
 }
 
-// ═══ SINCRONIZAÇÃO VENDA → FINANCEIRO (2026-09-22) — espelha a venda
-// PDV/TAP recém-salva como um lançamento no bloco Financeiro > Vendas
-// (localStorage, chave r8v), pra esse bloco parar de exigir digitação manual.
-// Idempotente (checa origemId antes de duplicar). getVendas/setVendas/uid/
-// round2 só existem depois que o script inteiro carrega, mas essa função só
-// roda em resposta a clique do usuário (bem depois disso), então é seguro.
+// ═══ SINCRONIZAÇÃO VENDA → FINANCEIRO (2026-09-22, corrigido 2026-09-22) —
+// espelha a venda PDV/TAP recém-salva como um lançamento em Financeiro >
+// Vendas (dadosERP.financeiro.r8v — é sincronizado via Firebase pelo mesmo
+// mecanismo do resto do ERP, não é localStorage isolado como eu descrevi
+// antes por engano). Idempotente (checa origemId antes de duplicar).
+// IMPORTANTE: NÃO usa setVendas()/DB.set() aqui de propósito — aquilo
+// dispara seu próprio salvarDadosFirebase() imediatamente, e chamado nesse
+// meio-tempo entre o push da venda e o salvarDadosLocal() logo depois, cria
+// duas gravações concorrentes que competem entre si; a que perde a corrida
+// pode gravar por cima sem incluir a mudança da outra, perdendo o registro
+// do Financeiro em silêncio (foi exatamente o bug relatado em teste). Por
+// isso só mutamos dadosERP.financeiro.r8v em memória aqui, e quem persiste
+// de fato é o salvarDadosLocal() chamado logo em seguida — uma única
+// gravação cobrindo venda + financeiro juntos.
 function _r8SincronizarVendaFinanceiro(venda) {
     try {
-        if (typeof getVendas !== 'function' || typeof setVendas !== 'function' || !venda || !venda.id) return;
-        var vendas = getVendas();
+        if (!venda || !venda.id) return;
+        if (!dadosERP.financeiro) dadosERP.financeiro = {};
+        var vendas = dadosERP.financeiro.r8v || [];
         if (vendas.some(function(v){ return v.origemId === venda.id; })) return;
         var ehTAP = venda.tipo === 'TAP';
         var desc = (ehTAP ? 'Transferência TAP' : 'Venda PDV') + ' — Lote ' + (venda.lote || '') + (venda.destino ? (' — ' + venda.destino) : '');
@@ -11365,7 +11374,7 @@ function _r8SincronizarVendaFinanceiro(venda) {
             origemId: venda.id,
             origemTipo: venda.tipo || ''
         });
-        setVendas(vendas);
+        dadosERP.financeiro.r8v = vendas;
     } catch(e) {}
 }
 
@@ -11385,9 +11394,9 @@ function salvarVendaPDV(){
     if(!dadosERP.vendasPDV)dadosERP.vendasPDV=[];
     var _novaVendaPDV={id:'V'+Date.now()+Math.random().toString(36).slice(2,7),tipo:'PDV',lote,tipoEmbalagem:prod.tipoEmbalagem||'',embalagemCodigo:prod.embalagemCodigo||'',embalagemDescricao:prod.embalagemDescricao||'',data,destino,estilo:prod.estilo,quantidade:qtd,precoPorLitro:preco,valorTotal:(qtd*preco),pagamento,observacoes:obs};
     dadosERP.vendasPDV.push(_novaVendaPDV);
+    _r8SincronizarVendaFinanceiro(_novaVendaPDV);
     salvarDadosLocal();
     _r8PublicarVendaSegura(_novaVendaPDV);
-    _r8SincronizarVendaFinanceiro(_novaVendaPDV);
     document.getElementById('vendaLotePDV').value='';document.getElementById('vendaEstiloPDV').value='';document.getElementById('vendaDataPDV').value=obterData();document.getElementById('vendaNomePDV').value='';document.getElementById('vendaQtdePDV').value='';document.getElementById('vendaObsPDV').value='';var pEl=document.getElementById('vendaPrecoPDV');if(pEl)pEl.value='';var tEl=document.getElementById('vendaTotalPDV');if(tEl){tEl.value='';tEl.style.background='#f0fdf4';}var pgEl=document.getElementById('vendaPagamentoPDV');if(pgEl)pgEl.value='';
     R8.toast.ok('Venda PDV registrada — Lote: '+lote+' | '+qtd+'L');
     aplicarFiltrosVendasPDV();atualizarTabelaProdutoAcabado();popularSelectLotesDisponveis('vendaLotePDV','vendaEstiloPDV');
@@ -11411,9 +11420,9 @@ function salvarVendaTAP(){
     if(!dadosERP.vendasTaps)dadosERP.vendasTaps=[];
     var _novaVendaTAP={id:'V'+Date.now()+Math.random().toString(36).slice(2,7),tipo:'TAP',lote,tipoEmbalagem:prod.tipoEmbalagem||'',embalagemCodigo:prod.embalagemCodigo||'',embalagemDescricao:prod.embalagemDescricao||'',data,estilo:prod.estilo,quantidade:qtd,precoPorLitro:preco,valorTotal:(qtd*preco),pagamento,observacoes:obs,saldoCamaraFriaApos:prod.camaraFria};
     dadosERP.vendasTaps.push(_novaVendaTAP);
+    _r8SincronizarVendaFinanceiro(_novaVendaTAP);
     salvarDadosLocal();
     _r8PublicarVendaSegura(_novaVendaTAP);
-    _r8SincronizarVendaFinanceiro(_novaVendaTAP);
     document.getElementById('vendaLoteTAP').value='';document.getElementById('vendaEstiloTAP').value='';document.getElementById('vendaDataTAP').value=obterData();document.getElementById('vendaQtdeTAP').value='';document.getElementById('vendaObsTAP').value='';var pEl=document.getElementById('vendaPrecoTAP');if(pEl)pEl.value='';var tEl=document.getElementById('vendaTotalTAP');if(tEl){tEl.value='';tEl.style.background='#f0fdf4';}var pgEl=document.getElementById('vendaPagamentoTAP');if(pgEl)pgEl.value='';
     R8.toast.ok('Venda TAP registrada — Lote: '+lote+' | '+qtd+'L');
     aplicarFiltrosVendasTAP();atualizarTabelaProdutoAcabado();popularSelectLotesDisponveis('vendaLoteTAP','vendaEstiloTAP');
