@@ -19870,7 +19870,7 @@ function renderHistVendas(){
         '<span class="lanc-status '+(v.status==='recebido'?'pago':'pend')+'">'+(v.status==='recebido'?'Recebido':'A Receber')+'</span>'+
       '</div>'+
       (v.origemId?'':'<button class="r8-btn-acao r8-btn-editar" onclick="editarVenda(\''+v.id+'\')" title="Editar"><i class="fas fa-pen"></i></button>')+
-      '<button class="r8-btn-acao r8-btn-excluir" onclick="excluirVenda(\''+v.id+'\')" title="Excluir"><i class="fas fa-trash"></i></button>'+
+      (v.origemId?'':'<button class="r8-btn-acao r8-btn-excluir" onclick="excluirVenda(\''+v.id+'\')" title="Excluir"><i class="fas fa-trash"></i></button>')+
     '</div>';
   }).join('');
 }
