@@ -11378,6 +11378,19 @@ function _r8SincronizarVendaFinanceiro(venda) {
     } catch(e) {}
 }
 
+// ═══ REMOÇÃO VENDA → FINANCEIRO (2026-09-23) — espelha a exclusão de uma
+// venda PDV/TAP removendo o lançamento correspondente (por origemId) de
+// dadosERP.financeiro.r8v, pra Financeiro/Contas zerarem junto. Mesma regra
+// do sync de criação: só muta em memória, quem persiste é o
+// salvarDadosLocal() chamado logo em seguida (evita a corrida de duas
+// gravações concorrentes).
+function _r8RemoverVendaFinanceiro(venda) {
+    try {
+        if (!venda || !venda.id || !dadosERP.financeiro || !dadosERP.financeiro.r8v) return;
+        dadosERP.financeiro.r8v = dadosERP.financeiro.r8v.filter(function(v){ return v.origemId !== venda.id; });
+    } catch(e) {}
+}
+
 function salvarVendaPDV(){
     let loteChave=document.getElementById('vendaLotePDV')?.value;
     let data=document.getElementById('vendaDataPDV')?.value;
@@ -11501,6 +11514,7 @@ window.removerVendaPDV=function(i){confirmarAcao({titulo:'Remover venda PDV',msg
         }
     }
     dadosERP.vendasPDV.splice(i,1);
+    _r8RemoverVendaFinanceiro(v);
     salvarDadosLocal();
     aplicarFiltrosVendasPDV();
     if (typeof atualizarTabelaProdutoAcabado === 'function') atualizarTabelaProdutoAcabado();
@@ -11574,6 +11588,7 @@ window.removerVendaTAP=function(i){confirmarAcao({titulo:'Remover transferência
         }
     }
     dadosERP.vendasTaps.splice(i,1);
+    _r8RemoverVendaFinanceiro(v);
     salvarDadosLocal();
     aplicarFiltrosVendasTAP();
     if (typeof atualizarTabelaProdutoAcabado === 'function') atualizarTabelaProdutoAcabado();
@@ -17801,18 +17816,9 @@ if(document.readyState === 'loading'){
 <!-- DASHBOARD -->
 <div id="page-dash" class="page active">
   <div style="padding-top:4px;">
-    <div class="dash-shortcuts">
-      <button class="sc-btn" onclick="navTo('compras')">
-        <div class="sc-icon am"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div>
-        <div class="sc-label">Nova Compra</div>
-        <div class="sc-sub">Lançar despesa</div>
-      </button>
-      <button class="sc-btn" onclick="navTo('vendas')">
-        <div class="sc-icon gr"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div>
-        <div class="sc-label">Nova Venda</div>
-        <div class="sc-sub">Lançar receita</div>
-      </button>
-    </div>
+    <!-- 2026-09-23: atalhos "Nova Compra"/"Nova Venda" removidos a pedido do
+         usuário — Compras e Vendas continuam acessíveis pelas abas normais
+         do rodapé. -->
 
     <div class="mes-nav">
       <button onclick="dashMesAnt()">&#8249;</button>
@@ -20014,12 +20020,12 @@ function renderContas(){
   const busca=(document.getElementById('busca-contas').value||'').toLowerCase();
 
   const pagar=cM.map(c=>({
-    data:c.data,nome:c.fornecedor||'Compra',
+    data:c.data,nome:'Compras - '+(c.fornecedor||'Compra'),
     sub:(c.secao||'')+(c.tipo?' · '+c.tipo:'')+(c.pagamento?' · '+c.pagamento:''),
     valor:c.total||0,tipo:'pagar',status:c.statusPag||'pendente',pagamento:c.pagamento,id:c.id
   }));
   const receber=vM.map(v=>({
-    data:v.data,nome:v.descricao||v.tipo||'Venda',
+    data:v.data,nome:'Vendas - '+(v.descricao||v.tipo||'Venda'),
     sub:(v.tipo||'')+(v.pagamento?' · '+v.pagamento:''),
     valor:v.valor||0,tipo:'receber',status:v.status==='recebido'?'pago':'pendente',id:v.id
   }));
