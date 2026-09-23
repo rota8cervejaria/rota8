@@ -18719,6 +18719,14 @@ function undOptsHtml(){return UNIDADES.map(u=>'<option>'+u+'</option>').join('')
 // (a Movimentação também) — é isso que permite estornar ao excluir/editar.
 const FIN_TIPO_INS='Insumos / Matéria-Prima';
 const FIN_TIPOS_INSUMO=['Malte','Levedura','Lúpulos','Adjunto','Especiaria','Coadjuvantes'];
+// ═══ FASE 1 — CONTABILIZAÇÃO PADRÃO (2026-09-23): Sanitiz./Mat. Limpeza e
+// Equipamentos passam a ter entrada automática de cadastro também, no mesmo
+// padrão que já existia só para Insumos. Constantes novas, isoladas — o
+// caminho de Insumos (FIN_TIPO_INS acima) continua 100% como estava.
+const FIN_TIPO_LIMPEZA='Sanitiz. / Mat. Limpeza';
+const FIN_TIPO_EQUIP='Equipamentos';
+const FIN_TIPOS_LIMPEZA=['Limpeza/Higienização','Sanitização'];
+const FIN_TIPOS_EQUIP=['Tina de Mostura','Tanques Fermentação/Maturação','Moinho','Trocador de Calor','Lavador de Barril','Outros'];
 const FIN_ORIGEM_COMPRA='Compra Financeira (Fábrica)';
 const FIN_LAUDOS={};
 let finMsgErro='';
@@ -18733,8 +18741,8 @@ const finNorm=s=>(s||'').toString().normalize('NFD').replace(/[\u0300-\u036f]/g,
 function insTipoHtml(pfx,sfx,id){
   const fnTipo=pfx==='ci'?'ciToggleIns('+id+')':'edToggleIns()';
   return '<div id="'+pfx+'-instipo-wrap'+sfx+'" style="display:none">'+
-    '<div style="font-size:10px;font-weight:800;color:#78716c;text-transform:uppercase;letter-spacing:.07em;margin-top:16px;padding-top:12px;border-top:1px dashed #d6cdbe">Cadastro de Insumos (entrada automática no Estoque)</div>'+
-    '<div class="fld" style="margin-top:12px"><label>Tipo do Insumo *</label><select id="'+pfx+'-instipo'+sfx+'" onchange="'+fnTipo+'"><option value="">Selecione</option>'+FIN_TIPOS_INSUMO.map(function(t){return '<option>'+t+'</option>';}).join('')+'</select></div>'+
+    '<div id="'+pfx+'-instipo-hdr'+sfx+'" style="font-size:10px;font-weight:800;color:#78716c;text-transform:uppercase;letter-spacing:.07em;margin-top:16px;padding-top:12px;border-top:1px dashed #d6cdbe">Cadastro de Insumos (entrada automática no Estoque)</div>'+
+    '<div class="fld" style="margin-top:12px"><label id="'+pfx+'-instipo-lbl'+sfx+'">Tipo do Insumo *</label><select id="'+pfx+'-instipo'+sfx+'" onchange="'+fnTipo+'"><option value="">Selecione</option>'+FIN_TIPOS_INSUMO.map(function(t){return '<option>'+t+'</option>';}).join('')+'</select></div>'+
   '</div>';
 }
 function insBlockHtml(pfx,sfx,id){
@@ -18767,14 +18775,55 @@ function ciInsAtivo(id){
   const t=document.getElementById('ci-tipo-'+id);
   return !!(f&&t&&f.classList.contains('on')&&t.value===FIN_TIPO_INS);
 }
+// 2026-09-23: versão generalizada — devolve qual dos 3 destinos de cadastro
+// a compra ativa ('insumo'|'limpeza'|'equipamento'), ou '' se nenhum.
+// ciInsAtivo() acima continua existindo e intocada por quem já a chama.
+function ciCategoriaAtiva(id){
+  const f=document.getElementById('seg-fab-'+id);
+  const t=document.getElementById('ci-tipo-'+id);
+  if(!f||!t||!f.classList.contains('on'))return '';
+  if(t.value===FIN_TIPO_INS)return 'insumo';
+  if(t.value===FIN_TIPO_LIMPEZA)return 'limpeza';
+  if(t.value===FIN_TIPO_EQUIP)return 'equipamento';
+  return '';
+}
+function ciTiposSubopcao(cat){
+  if(cat==='limpeza')return FIN_TIPOS_LIMPEZA;
+  if(cat==='equipamento')return FIN_TIPOS_EQUIP;
+  return FIN_TIPOS_INSUMO;
+}
+function ciLabelBloco(cat){
+  if(cat==='limpeza')return 'Cadastro de Limpeza/Sanitização (entrada automática no Estoque)';
+  if(cat==='equipamento')return 'Cadastro de Equipamentos (Patrimônio Fixo — entrada automática)';
+  return 'Cadastro de Insumos (entrada automática no Estoque)';
+}
+function ciLabelSubopcao(cat){
+  if(cat==='limpeza')return 'Tipo do Produto *';
+  if(cat==='equipamento')return 'Tipo do Equipamento *';
+  return 'Tipo do Insumo *';
+}
 function ciToggleIns(id){
-  const ativo=ciInsAtivo(id);
+  const cat=ciCategoriaAtiva(id);
+  const ativo=!!cat;
   const w=document.getElementById('ci-ins-wrap-'+id);
   if(w)w.style.display=ativo?'block':'none';
   const wt=document.getElementById('ci-instipo-wrap-'+id);
   if(wt)wt.style.display=ativo?'block':'none';
+  // 2026-09-23: relabela o bloco e repopula as opções do sub-select conforme
+  // a categoria (insumo/limpeza/equipamento) — só texto/opções, não muda
+  // nenhum id de campo nem comportamento de quem já usava isso pra Insumo.
+  const hdr=document.getElementById('ci-instipo-hdr-'+id);
+  if(hdr)hdr.textContent=ciLabelBloco(cat);
+  const lbl=document.getElementById('ci-instipo-lbl-'+id);
+  if(lbl)lbl.textContent=ciLabelSubopcao(cat);
+  const sel=document.getElementById('ci-instipo-'+id);
+  if(sel&&sel.getAttribute('data-cat')!==cat){
+    const optsList=ciTiposSubopcao(cat);
+    sel.innerHTML='<option value="">Selecione</option>'+optsList.map(function(t){return '<option>'+t+'</option>';}).join('');
+    sel.setAttribute('data-cat',cat);
+  }
   const tIns=(document.getElementById('ci-instipo-'+id)||{}).value||'';
-  const u=(ativo&&tIns)?finUnidIns(tIns):'';
+  const u=(cat==='insumo'&&tIns)?finUnidIns(tIns):(cat==='limpeza'?'L':'');
   const lq=document.getElementById('ci-lbl-qtd-'+id);
   const lv=document.getElementById('ci-lbl-vun-'+id);
   if(lq)lq.textContent=u?'Quantidade ('+u+') *':'Quantidade *';
@@ -18866,6 +18915,46 @@ function finLancarEntrada(entrada){
     quantidade:entrada.qtd,unidade:entrada.unidade,lote:entrada.lote,origem:FIN_ORIGEM_COMPRA,
     saldoAnterior:saldoAtual-entrada.qtd,saldoAtual:saldoAtual,compraId:entrada.compraId
   });
+}
+
+// ═══ FASE 1 — CONTABILIZAÇÃO PADRÃO (2026-09-23) ═══
+// Entrada automática pra Cadastro-Limpeza, no mesmo formato que
+// salvarLimpezaERP() usa quando alguém cadastra manualmente — pra ficar
+// idêntico ao que já existe, sem criar um formato paralelo.
+function finLancarEntradaLimpeza(dados){
+  if(!dadosERP.produtosLimpeza)dadosERP.produtosLimpeza=[];
+  dadosERP.produtosLimpeza.push({
+    id:R8.novoId(),
+    codigo:dados.codigo,
+    tipo:dados.tipo,
+    descricao:dados.descricao,
+    lote:dados.lote||'',
+    fabricante:dados.fabricante||'',
+    qtd:dados.qtd,
+    valor:round2(dados.qtd*dados.valorUn),
+    validade:dados.validade||'',
+    obs:dados.obs||''
+  });
+}
+// Entrada automática pra Cadastro-Equipamentos (Patrimônio Fixo), no mesmo
+// formato que salvarEquipamentoERP() usa. Equipamento é rastreado por
+// unidade física (não por saldo), então se a compra tiver quantidade > 1,
+// gera um registro por unidade, com sufixo -1/-2/... no código pra não
+// colidir.
+function finLancarEntradaEquipamento(dados){
+  if(!dadosERP.equipamentos)dadosERP.equipamentos=[];
+  const n=Math.max(1,Math.round(dados.qtd||1));
+  for(let i=1;i<=n;i++){
+    dadosERP.equipamentos.push({
+      id:R8.novoId(),
+      codigo:n>1?(dados.codigo+'-'+i):dados.codigo,
+      descricao:dados.descricao,
+      tipo:dados.tipo,
+      situacao:'Ativo',
+      valor:dados.valorUn,
+      obs:dados.obs||''
+    });
+  }
 }
 
 function toggleCiDet(id){
@@ -19044,10 +19133,12 @@ function validarCompra(){
       else if(venc)venc.classList.remove('err');
     }
   });
-  // Campos do Cadastro de Insumos (só nas compras que geram entrada no estoque)
+  // Campos do Cadastro de destino (Insumos/Limpeza/Equipamentos — só nas
+  // compras que geram entrada automática)
   const vistos={};
   cIds.forEach(function(id){
-    if(!ciInsAtivo(id))return;
+    const cat=ciCategoriaAtiva(id);
+    if(!cat)return;
     const t=document.getElementById('ci-instipo-'+id),c=document.getElementById('ci-inscod-'+id);
     [t,c].forEach(function(el){
       if(!(el.value||'').trim()){el.classList.add('err');ok=false;}
@@ -19057,10 +19148,16 @@ function validarCompra(){
     if(!cod)return;
     const desc=document.getElementById('ci-desc-'+id).value||'';
     let msg='';
-    const conf=_r8DescricaoConflitanteInsumo(cod,desc,-1);
-    if(conf){
-      msg='O código "'+cod+'" já está cadastrado para "'+conf.descricao+'". Use um código diferente, ou corrija a descrição para que seja exatamente o mesmo produto (assim as entradas se somam corretamente no mesmo saldo).';
-    } else {
+    // A checagem de "código já usado por outro produto no Cadastro" só existe
+    // pra Insumo (é a regra de saldo por código que já existia). Limpeza e
+    // Equipamentos não têm essa restrição em seus próprios cadastros.
+    if(cat==='insumo'){
+      const conf=_r8DescricaoConflitanteInsumo(cod,desc,-1);
+      if(conf){
+        msg='O código "'+cod+'" já está cadastrado para "'+conf.descricao+'". Use um código diferente, ou corrija a descrição para que seja exatamente o mesmo produto (assim as entradas se somam corretamente no mesmo saldo).';
+      }
+    }
+    if(!msg){
       const cn=cod.toLowerCase(),dn=desc.trim().toLowerCase();
       if(vistos[cn]!==undefined&&vistos[cn]!==dn)msg='O código "'+cod+'" está sendo usado por produtos diferentes nesta mesma compra. Use um código diferente para cada produto.';
       vistos[cn]=dn;
@@ -19078,10 +19175,16 @@ function confirmarSalvarCompra(){
     const v=parseBR(document.getElementById('ci-vun-'+id).value||'');
     tot=round2(tot+q*v);
   });
-  const nIns=cIds.filter(ciInsAtivo).length;
+  const nIns=cIds.filter(function(id){return ciCategoriaAtiva(id)==='insumo';}).length;
+  const nLimp=cIds.filter(function(id){return ciCategoriaAtiva(id)==='limpeza';}).length;
+  const nEquip=cIds.filter(function(id){return ciCategoriaAtiva(id)==='equipamento';}).length;
+  const partesEntrada=[];
+  if(nIns)partesEntrada.push(nIns+' de insumo (Cadastro + Estoque de Insumos)');
+  if(nLimp)partesEntrada.push(nLimp+' de limpeza/sanitização (Cadastro de Limpeza)');
+  if(nEquip)partesEntrada.push(nEquip+' de equipamento (Cadastro de Equipamentos — Patrimônio Fixo)');
   openModal('Confirmar Registro',
     '<strong>'+cIds.length+' item(ns)</strong> serão registrados.<br>Total: <strong>'+fmtBRL(tot)+'</strong>'+
-    (nIns?'<br><br><strong>'+nIns+' item(ns) de insumo</strong> darão entrada automática no Cadastro e no Estoque de Insumos.':'')+
+    (partesEntrada.length?'<br><br><strong>Entrada automática:</strong> '+partesEntrada.join('; ')+'.':'')+
     '<br><br>Deseja confirmar?',
     'Salvar','am',salvarCompra);
 }
@@ -19092,7 +19195,10 @@ function salvarCompra(){
   const grupoId=uid();
   if(!dadosERP.insumos)dadosERP.insumos=[];
   if(!dadosERP.movimentacoesEstoque)dadosERP.movimentacoesEstoque=[];
+  if(!dadosERP.produtosLimpeza)dadosERP.produtosLimpeza=[];
+  if(!dadosERP.equipamentos)dadosERP.equipamentos=[];
   const bkI=dadosERP.insumos.slice(),bkM=dadosERP.movimentacoesEstoque.slice();
+  const bkL=dadosERP.produtosLimpeza.slice(),bkE=dadosERP.equipamentos.slice();
   let nEntradas=0;
   cIds.forEach(function(id){
     const q=parseFloat(document.getElementById('ci-qtd-'+id).value||0);
@@ -19102,7 +19208,8 @@ function salvarCompra(){
     const tipoCompra=document.getElementById('ci-tipo-'+id).value||'';
     const descCompra=document.getElementById('ci-desc-'+id).value||'';
     const fornCompra=document.getElementById('ci-forn-'+id).value||'';
-    const isIns=ciInsAtivo(id)&&q>0;
+    const cat=ciCategoriaAtiva(id);
+    const isIns=cat==='insumo'&&q>0;
     const tipoIns=isIns?(document.getElementById('ci-instipo-'+id).value||''):'';
     const compraId=uid();
     compras.push({
@@ -19138,9 +19245,30 @@ function salvarCompra(){
         laudo:FIN_LAUDOS[id]||null
       }));
       nEntradas++;
+    } else if(cat==='limpeza'&&q>0){
+      finLancarEntradaLimpeza({
+        codigo:(document.getElementById('ci-inscod-'+id).value||'').trim(),
+        lote:document.getElementById('ci-inslote-'+id).value||'',
+        tipo:document.getElementById('ci-instipo-'+id).value||'',
+        descricao:descCompra,
+        fabricante:document.getElementById('ci-insprod-'+id).value||'',
+        qtd:q,valorUn:v,
+        validade:document.getElementById('ci-insval-'+id).value||'',
+        obs:document.getElementById('ci-insobs-'+id).value||''
+      });
+      nEntradas++;
+    } else if(cat==='equipamento'&&q>0){
+      finLancarEntradaEquipamento({
+        codigo:(document.getElementById('ci-inscod-'+id).value||'').trim(),
+        tipo:document.getElementById('ci-instipo-'+id).value||'',
+        descricao:descCompra,
+        qtd:q,valorUn:v,
+        obs:document.getElementById('ci-insobs-'+id).value||''
+      });
+      nEntradas++;
     }
   });
-  if(!setCompras(compras)){finRestaurarEstoque(bkI,bkM);return;}
+  if(!setCompras(compras)){finRestaurarEstoque(bkI,bkM);dadosERP.produtosLimpeza=bkL;dadosERP.equipamentos=bkE;return;}
   cIds=[];cCount=0;
   pendingAnexo=null;
   Object.keys(FIN_LAUDOS).forEach(function(k){delete FIN_LAUDOS[k];});
@@ -19148,7 +19276,7 @@ function salvarCompra(){
   document.getElementById('compra-total-bar').classList.remove('show');
   document.getElementById('cf-ok').style.display='none';
   addCompraItem();
-  showToast('Compra registrada com sucesso!'+(nEntradas?' Entrada lançada no Cadastro e no Estoque de Insumos.':''),'ok');
+  showToast('Compra registrada com sucesso!'+(nEntradas?' Entrada lançada automaticamente no(s) cadastro(s) correspondente(s).':''),'ok');
   renderHistCompras();
   renderDash();
   if(nEntradas){
@@ -19156,6 +19284,8 @@ function salvarCompra(){
     // ficava só na memória da sessão até alguma outra ação salvar por acaso.
     try{ salvarDadosLocal(); }catch(e){}
     finAtualizarTelasInsumos();
+    if(typeof atualizarListaLimpezaERP==='function')try{atualizarListaLimpezaERP();}catch(e){}
+    if(typeof atualizarListaEquipamentosERP==='function')try{atualizarListaEquipamentosERP();}catch(e){}
   }
 }
 
