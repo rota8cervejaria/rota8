@@ -91,10 +91,10 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&family=Bebas+Neue&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
     <!-- Ocultar landing/header imediatamente quando acessado via QR Code (sem document.write) -->
     <script>
     (function(){
@@ -195,56 +195,6 @@
     _carregarSdkFirebase('https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js');
     _carregarSdkFirebase('https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js');
     _carregarSdkFirebase('https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js');
-    </script>
-    <!-- LOG DE ERRO CENTRALIZADO (2026-09-22) — adição pura, não altera nenhum
-         comportamento existente. Observa erros de JS e promises rejeitadas e tenta
-         gravar um registro em erp/rota8cervejaria/logsErro para diagnóstico remoto
-         (ex.: erro no celular de alguém em campo, numa rota pública de QR Code).
-         Requer esta regra no Console do Firebase para gravar mesmo sem login:
-           "logsErro": { ".read": "auth != null", ".write": true }
-         Enquanto essa regra não existir, a gravação falha em silêncio e nada muda. -->
-    <script>
-    (function(){
-        var _r8UltimoEnvioLog = 0;
-        function _r8EnviarLog(entry) {
-            try {
-                var db = window.db;
-                if (!db || typeof db.ref !== 'function') return;
-                var agora = Date.now();
-                if (agora - _r8UltimoEnvioLog < 5000) return; // throttle: no máx. 1 gravação a cada 5s
-                _r8UltimoEnvioLog = agora;
-                db.ref('erp/rota8cervejaria/logsErro').push(entry).catch(function(){});
-            } catch(e) {}
-        }
-        function _r8Registrar(mensagem, origem, extra) {
-            try {
-                var email = null;
-                try { email = (usuarioAtual && usuarioAtual.email) ? usuarioAtual.email : null; } catch(e) {}
-                var entry = {
-                    mensagem: String(mensagem == null ? '' : mensagem).slice(0, 500),
-                    origem: String(origem || '').slice(0, 300),
-                    url: window.location.href,
-                    build: window.R8_BUILD || '',
-                    usuario: email,
-                    userAgent: navigator.userAgent,
-                    timestamp: Date.now()
-                };
-                if (extra) entry.extra = String(extra).slice(0, 1000);
-                _r8EnviarLog(entry);
-            } catch(e) {}
-        }
-        window.addEventListener('error', function(ev) {
-            try {
-                _r8Registrar(ev && ev.message, (ev && ev.filename || '') + ':' + (ev && ev.lineno || '') + ':' + (ev && ev.colno || ''), ev && ev.error && ev.error.stack);
-            } catch(e) {}
-        });
-        window.addEventListener('unhandledrejection', function(ev) {
-            try {
-                var r = ev && ev.reason;
-                _r8Registrar(r && r.message ? r.message : String(r), 'promise', r && r.stack);
-            } catch(e) {}
-        });
-    })();
     </script>
     <style>
         *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -444,7 +394,7 @@
         .item-lista .dado-linha{margin-bottom:10px;font-size:14px}
         .item-lista .dado-linha strong{font-weight:700;color:#475569;margin-right:8px;font-family:'Montserrat',sans-serif;text-transform:uppercase;font-size:11px;letter-spacing:0.5px}
         .item-lista .dado-valor{font-family:'Times New Roman',Times,serif;font-size:14px;color:#00008b;display:inline-block;font-weight:normal}
-        .item-acoes{display:flex;gap:8px;flex-shrink:0;align-items:center}
+        .item-acoes{display:flex;gap:12px;flex-shrink:0;align-items:center}
         .item-acoes i{cursor:pointer;font-size:15px;padding:6px;border-radius:8px;transition:color 0.2s,background 0.2s}
         .qrcode-container{text-align:center;padding:20px;background:#fff;border-radius:12px;margin:16px 0;box-shadow:0 2px 10px rgba(0,0,0,0.06);border:1px solid #f0e6d2}
         /* ══════════════════════════════════════════
@@ -609,9 +559,6 @@
         .card-sub small{font-size:10px;color:#64748b;margin-top:4px;display:block}
         .submenu-cards .card-sub{flex:1;min-width:110px}
         .menu-header{display:flex;flex-direction:column;align-items:center;margin-bottom:32px}
-        /* Menu principal: dourado da borda e cor do card refinados */
-        .grid-2col .card-menu{background:#fffaf0;border:1.5px solid #b8901f}
-        .grid-2col .card-menu:hover{border-color:#a67c1a}
         .logo-img{height:56px;width:auto}
         .titulo-container h1{font-size:18px;font-weight:700;background:linear-gradient(135deg,#b45309,#92400e);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;white-space:nowrap;text-align:center}
         /* ═══════════════════════════════════════════════
@@ -1486,12 +1433,12 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 19px;
-        height: 19px;
+        width: 34px;
+        height: 34px;
         border: none;
-        border-radius: 5px;
+        border-radius: 9px;
         cursor: pointer;
-        font-size: 9px;
+        font-size: 15px;
         transition: background 0.18s, transform 0.12s, box-shadow 0.18s;
         -webkit-tap-highlight-color: transparent;
         touch-action: manipulation;
@@ -1588,8 +1535,8 @@
         flex-shrink: 0;
     }
     .ref-btn-voltar {
-        background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: #f97316;
-        width: 32px; height: 32px; border-radius: 9px; font-size: 14px;
+        background: rgba(255,255,255,0.08); border: none; color: #f97316;
+        width: 32px; height: 32px; border-radius: 8px; font-size: 14px;
         display: flex; align-items: center; justify-content: center;
         cursor: pointer; flex-shrink: 0;
     }
@@ -1812,8 +1759,8 @@
 #telaFinanceiro .seg-btn{border:none;background:none;border-radius:10px;padding:10px 8px;font-size:12px;font-weight:700;cursor:pointer;color:#78716c;transition:all .2s;display:flex;flex-direction:column;align-items:center;gap:5px;}
 #telaFinanceiro .seg-btn svg{opacity:.5;}
 #telaFinanceiro .seg-btn.on{background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.1);}
-#telaFinanceiro .seg-btn.on.sec-fab{color:#b45309;}
-#telaFinanceiro .seg-btn.on.sec-fab svg{opacity:1;}
+#telaFinanceiro .seg-btn.on.fab{color:#b45309;}
+#telaFinanceiro .seg-btn.on.fab svg{opacity:1;}
 #telaFinanceiro .seg-btn.on.gas{color:#15803d;}
 #telaFinanceiro .seg-btn.on.gas svg{opacity:1;}
 /* STATUS ROW */
@@ -2049,7 +1996,6 @@ window._menuAcao = function(acao) {
 </script>
 </head>
 <body>
-<div style="position:fixed;bottom:2px;right:4px;font-size:9px;color:#999;opacity:.55;z-index:99999;pointer-events:none;font-family:monospace">build 2026-09-21h</div>
 
 <!-- LOADING FIREBASE -->
 <div id="firebaseLoading">
@@ -4238,7 +4184,7 @@ function _repopularTelaAtualAposLoad() {
             popularSelectSalLoteProducao();
             popularSelectTanqueProducao();
             popularSelectEstiloProducao();
-            ['malte','adjunto','lupulo','levedura','especiaria','coadjuvante'].forEach(function(t){ popularSelectInsumoPorTipo(t); });
+            ['malte','adjunto','lupulo','levedura','especiaria'].forEach(function(t){ popularSelectInsumoPorTipo(t); });
             popularSelectLupuloProducao();
             popularSelectLeveduraProducao();
             if (elTanque && valTanque) elTanque.value = valTanque;
@@ -4975,7 +4921,7 @@ window._dedupCadastrosPorCodigo = function() {
         var porChave = {}, ordem = [];
         lista.forEach(function(item){
             if (!item || !item.codigo) return;
-            var chave = [item.codigo, item.lote||'', item.validade||'', String(item.qtd||0), item.compraId||''].join('|');
+            var chave = [item.codigo, item.lote||'', item.validade||'', String(item.qtd||0)].join('|');
             if (!porChave[chave]) { porChave[chave] = []; ordem.push(chave); }
             porChave[chave].push(item);
         });
@@ -5280,8 +5226,8 @@ function _pastRenderHistoricoFiltrado() {
         h += '</div>';
         if (r.obs) h += '<div style="font-size:11px;color:#555;font-style:italic;margin-bottom:10px;padding:6px 8px;background:rgba(44,24,16,0.05);border-radius:8px">"' + R8.esc(r.obs) + '"</div>';
         h += '<div style="display:flex;gap:8px;justify-content:flex-end;border-top:1px solid ' + corBd + ';padding-top:8px">';
-        h += '<button class="r8-btn-acao r8-btn-editar" onclick="pastArqEditar(' + iReal + ')" title="Editar"><i class="fas fa-pen"></i></button>';
-        h += '<button class="r8-btn-acao r8-btn-excluir" onclick="pastArqExcluir(' + iReal + ')" title="Excluir"><i class="fas fa-trash"></i></button>';
+        h += '<button class="r8-btn-acao r8-btn-editar" onclick="pastArqEditar(' + iReal + ')" title="Editar" style="width:auto;padding:7px 14px;gap:6px;font-size:12px;font-weight:700;border:1px solid #c49a2b;"><i class="fas fa-pen"></i> Editar</button>';
+        h += '<button class="r8-btn-acao r8-btn-excluir" onclick="pastArqExcluir(' + iReal + ')" title="Excluir" style="width:auto;padding:7px 14px;gap:6px;font-size:12px;font-weight:700;border:1px solid #ef4444;"><i class="fas fa-trash"></i> Excluir</button>';
         h += '<button class="r8-btn-acao r8-btn-pdf" onclick="gerarPDFPastRegistro(' + iReal + ')" title="Gerar PDF"><i class="fas fa-file-pdf"></i></button>';
         h += '</div>';
         h += '</div>';
@@ -5767,7 +5713,7 @@ window.renderLotesAtivos = function() {
         if (extras.length) html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+extras.join('')+'</div>';
 
         html += '<div style="border-top:1px solid #f0ebe3;padding-top:10px;display:flex;gap:8px;justify-content:flex-end">';
-        html += '<button class="r8-btn-acao r8-btn-editar" onclick="editarFichaERP('+idxFicha+')" title="Editar Ficha"><i class="fas fa-pen"></i></button>';
+        html += '<button class="r8-btn-acao r8-btn-editar" onclick="editarFichaERP('+idxFicha+')" style="width:auto;padding:7px 14px;gap:6px;font-size:12px;font-weight:700;border:1px solid #c49a2b;"><i class="fas fa-pen"></i> Editar Ficha</button>';
         if (!etapas[5].ok) {
             html += '<button class="r8-btn-acao" onclick="irParaTelaERP(\'telaEnvase\')" style="width:auto;padding:7px 14px;gap:6px;font-size:12px;font-weight:700;background:#10b981;color:#fff;"><i class="fas fa-whiskey-glass"></i> Envasar</button>';
         }
@@ -6893,7 +6839,7 @@ window.irParaTelaERP = function(id) {
         try { popularSelectTanqueProducao(); } catch(e) {}
         try { popularSelectEstiloProducao(); } catch(e) {}
         try { popularSelectAguaOrigemProducao(); } catch(e) {}
-        try { ['malte','adjunto','lupulo','levedura','especiaria','coadjuvante'].forEach(function(t) { popularSelectInsumoPorTipo(t); }); } catch(e) {}
+        try { ['malte','adjunto','lupulo','levedura','especiaria'].forEach(function(t) { popularSelectInsumoPorTipo(t); }); } catch(e) {}
         try { popularSelectLupuloProducao(); } catch(e) {}
         try { popularSelectLeveduraProducao(); } catch(e) {}
         // Rede de segurança: se os dados do Firebase ainda não tinham chegado na 1ª tentativa, repopula após 1s
@@ -6907,7 +6853,7 @@ window.irParaTelaERP = function(id) {
             try { popularSelectTanqueProducao(); } catch(e) {}
             try { popularSelectEstiloProducao(); } catch(e) {}
             try { popularSelectAguaOrigemProducao(); } catch(e) {}
-            try { ['malte','adjunto','lupulo','levedura','especiaria','coadjuvante'].forEach(function(t) { popularSelectInsumoPorTipo(t); }); } catch(e) {}
+            try { ['malte','adjunto','lupulo','levedura','especiaria'].forEach(function(t) { popularSelectInsumoPorTipo(t); }); } catch(e) {}
             try { popularSelectLupuloProducao(); } catch(e) {}
             try { popularSelectLeveduraProducao(); } catch(e) {}
             if (elTanque && valTanque) elTanque.value = valTanque;
@@ -7008,7 +6954,7 @@ function salvarInsumoERP() {
     var tipo   = document.getElementById('insTipo')?.value;
     var qtd    = parseFloat(document.getElementById('insQtd')?.value) || 0;
     var valor  = R8.valorMoeda(document.getElementById('insValor'));
-    var unid   = (tipo === 'Malte' || tipo === 'Adjunto') ? 'kg' : (tipo === 'Coadjuvantes' ? 'ml' : 'g');
+    var unid   = (tipo === 'Malte' || tipo === 'Adjunto') ? 'kg' : 'g';
     var obj = {
         codigo:     cod,
         lote:       document.getElementById('insLote')?.value || '',
@@ -7255,7 +7201,7 @@ window.excluirInsumoERP=function(i){
         }
     });
 };
-window.atualizarCampoInsumoERP=function(){let t=document.getElementById('insTipo')?.value;let lq=document.getElementById('lblQuantidade'),lv=document.getElementById('lblValor');let u=(t==='Malte'||t==='Adjunto')?'kg':(t==='Coadjuvantes'?'ml':'g');if(lq)lq.textContent='Quantidade ('+u+')';if(lv)lv.textContent='Valor (R$/'+u+')';};
+window.atualizarCampoInsumoERP=function(){let t=document.getElementById('insTipo')?.value;let lq=document.getElementById('lblQuantidade'),lv=document.getElementById('lblValor');if(lq)lq.textContent=(t==='Malte'||t==='Adjunto')?'Quantidade (kg)':'Quantidade (g)';if(lv)lv.textContent='Valor (R$/'+(t==='Malte'||t==='Adjunto'?'kg':'g')+')';};
 window.salvarInsumoERP=salvarInsumoERP;
 
 // ═══════════════════════════════════════════════════════
@@ -7665,6 +7611,7 @@ window._r8ClearRevisaoLaudo = function(btn, idx) {
 
 function _r8RenderizarRevisaoNFe(dados) {
     window._r8RevisaoLaudos = {};
+    window._r8RevisaoItensAtual = dados.itens || [];
     var tiposDisponiveis = ['Malte', 'Levedura', 'Lúpulos', 'Adjunto', 'Especiaria'];
     window._r8OrigemImportacaoAtual = dados.origemLabel || 'Importação NF-e';
     var overlay = document.getElementById('_r8OverlayRevisaoNFe');
@@ -7736,7 +7683,7 @@ function _r8RenderizarRevisaoNFe(dados) {
 
     var botoes = '<div style="display:flex;gap:8px;margin-top:8px">'
         + '<button class="btn-salvar" onclick="_r8ConfirmarImportacaoNFe()"><i class="fas fa-check-circle"></i> Confirmar Entrada no Estoque</button>'
-        + '<button class="btn-cancelar" onclick="document.getElementById(\'_r8OverlayRevisaoNFe\').remove();window._r8RevisaoLaudos={};"><i class="fas fa-times-circle"></i> Cancelar</button>'
+        + '<button class="btn-cancelar" onclick="document.getElementById(\'_r8OverlayRevisaoNFe\').remove();window._r8RevisaoLaudos={};window._r8RevisaoItensAtual=[];"><i class="fas fa-times-circle"></i> Cancelar</button>'
         + '</div>';
 
     card.innerHTML = cabecalho + itensHtml + botoes;
@@ -7773,6 +7720,7 @@ window._r8ConfirmarImportacaoNFe = function() {
         var validade = el.querySelector('._r8InValidade').value || '';
         var idxItem = el.getAttribute('data-idx');
         var laudo = window._r8RevisaoLaudos[idxItem] || null;
+        var origemCompraId = (window._r8RevisaoItensAtual[idxItem] || {}).origemCompraId || null;
         if (qtd <= 0) { ignorados++; return; }
 
         var codigo, descricao, tipo;
@@ -7793,7 +7741,7 @@ window._r8ConfirmarImportacaoNFe = function() {
             codigo: codigo, descricao: descricao, tipo: tipo,
             lote: lote, produtor: produtor, fornecedor: fornecedor,
             qtd: qtd, valor: valor, unidade: unid, validade: validade,
-            valorTotal: qtd * valor, obs: origemLbl,
+            valorTotal: qtd * valor, obs: origemLbl, origemCompraId: origemCompraId,
             laudoNome: laudo ? laudo.nome : '', laudoURL: '', laudoB64: laudo ? laudo.b64 : '', laudoTipo: laudo ? laudo.tipo : ''
         };
         obj.id = R8.novoId();
@@ -7817,6 +7765,7 @@ window._r8ConfirmarImportacaoNFe = function() {
     });
     overlay.remove();
     window._r8RevisaoLaudos = {};
+    window._r8RevisaoItensAtual = [];
     if (criados) {
         salvarDadosFirebase();
         atualizarListaInsumosERP();
@@ -7826,7 +7775,7 @@ window._r8ConfirmarImportacaoNFe = function() {
 };
 
 function salvarEquipamentoERP(){if(!window._r8ExigirAdmin('Editar Cadastros é restrito a Administradores.'))return;R8.limparValidacao(['eqCodigo']);let cod=document.getElementById('eqCodigo')?.value.trim();if(!R8.validar([{id:'eqCodigo',label:'Código',obrigatorio:true}]))return;let obj={codigo:cod,descricao:document.getElementById('eqDescricao')?.value||'',tipo:document.getElementById('eqTipo')?.value,situacao:document.getElementById('eqSituacao')?.value,valor:R8.valorMoeda(document.getElementById('eqValor')),obs:document.getElementById('eqObs')?.value||''};obj.id=(editandoIdERP!==null&&dadosERP.equipamentos[editandoIdERP]&&dadosERP.equipamentos[editandoIdERP].id)?dadosERP.equipamentos[editandoIdERP].id:R8.novoId();let _ed=editandoIdERP!==null;if(editandoIdERP!==null)dadosERP.equipamentos[editandoIdERP]=obj;else dadosERP.equipamentos.push(obj);salvarDadosLocal();fecharFormERP('formEquipamento');atualizarListaEquipamentosERP();registrarAuditoria('Equipamento',_ed?'editar':'criar','Código: '+cod);editandoIdERP=null;R8.toast.ok('Equipamento salvo!');}
-function atualizarListaEquipamentosERP(){let c=document.getElementById('listaEquipamentosERP');if(c)c.innerHTML=dadosERP.equipamentos.length?dadosERP.equipamentos.map(function(e,i){return'<div class="item-lista" style="flex-wrap:wrap"><div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex:1 1 100%;min-width:0"><span style="min-width:0;white-space:normal;word-break:break-word"><span style="font-size:13px"><strong>'+R8.esc(e.codigo)+'</strong> — '+R8.esc(e.descricao)+'</span>'+(e.tipo?'<div style="margin-top:5px"><span style="font-size:12.5px;color:#fff;background:#2c1810;padding:2px 8px;border-radius:4px;display:inline-block">'+R8.esc(e.tipo)+'</span></div>':'')+'</span><button class="r8-btn-acao r8-btn-qr" title="Gerar QR Code" onclick="gerarQREquipamento(\''+R8.esc(e.codigo).replace(/'/g,"\\'")+'\')"><i class="fas fa-qrcode"></i></button></div><div class="item-acoes" style="flex-shrink:0"><button class="r8-btn-acao r8-btn-editar" title="Editar" onclick="editarEquipamentoERP('+i+')"><i class="fas fa-pen"></i></button><button class="r8-btn-acao r8-btn-excluir" title="Excluir" onclick="excluirEquipamentoERP('+i+')"><i class="fas fa-trash"></i></button></div></div>';}).join(''):'<div class="card-item">Nenhum equipamento</div>';}
+function atualizarListaEquipamentosERP(){let c=document.getElementById('listaEquipamentosERP');if(c)c.innerHTML=dadosERP.equipamentos.length?dadosERP.equipamentos.map(function(e,i){return'<div class="item-lista" style="flex-wrap:wrap"><span style="flex:1 1 100%;min-width:0;white-space:normal;word-break:break-word"><span style="font-size:13px"><strong>'+R8.esc(e.codigo)+'</strong> — '+R8.esc(e.descricao)+'</span>'+(e.tipo?'<div style="margin-top:5px"><span style="font-size:12.5px;color:#fff;background:#2c1810;padding:2px 8px;border-radius:4px;display:inline-block">'+R8.esc(e.tipo)+'</span></div>':'')+'</span><div class="item-acoes" style="flex-shrink:0"><button class="r8-btn-acao r8-btn-qr" title="Gerar QR Code" onclick="gerarQREquipamento(\''+R8.esc(e.codigo).replace(/'/g,"\\'")+'\')"><i class="fas fa-qrcode"></i></button><button class="r8-btn-acao r8-btn-editar" title="Editar" onclick="editarEquipamentoERP('+i+')"><i class="fas fa-pen"></i></button><button class="r8-btn-acao r8-btn-excluir" title="Excluir" onclick="excluirEquipamentoERP('+i+')"><i class="fas fa-trash"></i></button></div></div>';}).join(''):'<div class="card-item">Nenhum equipamento</div>';}
 
 // Gera o QR Code de rastreabilidade de QUALQUER equipamento cadastrado —
 // aponta para a tela pública de Situação/Sanitização (?equipamento=CÓDIGO).
@@ -7856,7 +7805,7 @@ window.gerarQREquipamento = function(codigo) {
 };
 
 window.editarEquipamentoERP=function(i){let e=dadosERP.equipamentos[i];editandoIdERP=i;document.getElementById('eqCodigo').value=e.codigo;document.getElementById('eqDescricao').value=e.descricao;document.getElementById('eqTipo').value=e.tipo;document.getElementById('eqSituacao').value=e.situacao;document.getElementById('eqValor').value=e.valor?R8.formatarMoeda(e.valor):'';document.getElementById('eqObs').value=e.obs||'';mostrarFormERP('formEquipamento');};
-window.excluirEquipamentoERP=function(i){confirmarAcao({titulo:'Excluir equipamento',msg:'Tem certeza que deseja excluir este equipamento? Esta ação não pode ser desfeita.',onConfirm:function(){var eq=dadosERP.equipamentos[i];dadosERP.equipamentos.splice(i,1);var teveOrigem=eq&&eq.origemCompraId&&_r8RemoverCompraPorOrigem(eq.origemCompraId);salvarDadosLocal();atualizarListaEquipamentosERP();if(typeof renderHistCompras==='function')try{renderHistCompras();}catch(e){}registrarAuditoria('Equipamento','excluir','Código: '+((eq&&eq.codigo)||'—')+(teveOrigem?' (lançamento em Financeiro removido junto)':''));}});};
+window.excluirEquipamentoERP=function(i){confirmarAcao({titulo:'Excluir equipamento',msg:'Tem certeza que deseja excluir este equipamento? Esta ação não pode ser desfeita.',onConfirm:function(){var eq=dadosERP.equipamentos[i];dadosERP.equipamentos.splice(i,1);salvarDadosLocal();atualizarListaEquipamentosERP();registrarAuditoria('Equipamento','excluir','Código: '+((eq&&eq.codigo)||'—'));}});};
 window.salvarEquipamentoERP=salvarEquipamentoERP;
 
 // ── GERAÇÃO DE CÓDIGO AUTOMÁTICO — Barris (Embalagens) ──
@@ -7981,7 +7930,7 @@ function atualizarListaLimpezaERP(){let c=document.getElementById('listaLimpezaE
         + '<div class="item-acoes" style="position:absolute;right:14px;bottom:12px;margin-top:0"><button class="r8-btn-acao r8-btn-editar" title="Editar" onclick="editarLimpezaERP('+i+')"><i class="fas fa-pen"></i></button><button class="r8-btn-acao r8-btn-excluir" title="Excluir" onclick="excluirLimpezaERP('+i+')"><i class="fas fa-trash"></i></button></div></div>';
 }).join(''):'<div class="card-item">Nenhum produto cadastrado</div>';}
 window.editarLimpezaERP=function(i){let p=dadosERP.produtosLimpeza[i];editandoIdERP=i;document.getElementById('limpezaCodigo').value=p.codigo;document.getElementById('limpezaTipo').value=p.tipo||'';document.getElementById('limpezaDescricao').value=p.descricao||'';document.getElementById('limpezaLote').value=p.lote||'';document.getElementById('limpezaFabricante').value=p.fabricante||'';document.getElementById('limpezaQtd').value=p.qtd;document.getElementById('limpezaValor').value=p.valor?R8.formatarMoeda(p.valor):'';document.getElementById('limpezaValidade').value=p.validade||'';document.getElementById('limpezaObs').value=p.obs||'';mostrarFormERP('formLimpeza');};
-window.excluirLimpezaERP=function(i){confirmarAcao({titulo:'Excluir produto',msg:'Tem certeza que deseja excluir este produto? Esta ação não pode ser desfeita.',onConfirm:function(){var p=dadosERP.produtosLimpeza[i];dadosERP.produtosLimpeza.splice(i,1);var teveOrigem=p&&p.origemCompraId&&_r8RemoverCompraPorOrigem(p.origemCompraId);salvarDadosLocal();atualizarListaLimpezaERP();if(typeof renderHistCompras==='function')try{renderHistCompras();}catch(e){}registrarAuditoria('Limpeza','excluir','Código: '+((p&&p.codigo)||'—')+(teveOrigem?' (lançamento em Financeiro removido junto)':''));}});};
+window.excluirLimpezaERP=function(i){confirmarAcao({titulo:'Excluir produto',msg:'Tem certeza que deseja excluir este produto? Esta ação não pode ser desfeita.',onConfirm:function(){var p=dadosERP.produtosLimpeza[i];dadosERP.produtosLimpeza.splice(i,1);salvarDadosLocal();atualizarListaLimpezaERP();registrarAuditoria('Limpeza','excluir','Código: '+((p&&p.codigo)||'—'));}});};
 window.salvarLimpezaERP=salvarLimpezaERP;
 
 function atualizarEstoqueLimpezaERP(){
@@ -8048,7 +7997,7 @@ function popularSelectEstiloProducao(){
         });
     }
 }
-function popularSelectInsumoPorTipo(tipo){let mapa={malte:'malte',adjunto:'adjunto',lupulo:'lúpulos',levedura:'levedura',especiaria:'especiaria',coadjuvante:'coadjuvantes'};let chave=mapa[tipo.toLowerCase()]||tipo.toLowerCase();let id='insumo'+tipo.charAt(0).toUpperCase()+tipo.slice(1)+'SelectProducao';let s=document.getElementById(id);if(!s)return;let filtrado=dadosERP.insumos.filter(function(i){return i.tipo&&i.tipo.toLowerCase().trim()===chave;});
+function popularSelectInsumoPorTipo(tipo){let mapa={malte:'malte',adjunto:'adjunto',lupulo:'lúpulos',levedura:'levedura',especiaria:'especiaria'};let chave=mapa[tipo.toLowerCase()]||tipo.toLowerCase();let id='insumo'+tipo.charAt(0).toUpperCase()+tipo.slice(1)+'SelectProducao';let s=document.getElementById(id);if(!s)return;let filtrado=dadosERP.insumos.filter(function(i){return i.tipo&&i.tipo.toLowerCase().trim()===chave;});
     // Um código pode ter vários registros (compras/lotes diferentes) — mostra
     // uma única opção por código, com o SALDO AGRUPADO real, para o usuário
     // ver a disponibilidade antes de lançar na produção.
@@ -10091,21 +10040,19 @@ window.atualizarListaBarrisERP = function() {
             ? '<span style="font-size:11px;color:#64748b;display:block;margin-top:2px;font-style:italic"><i class="fas fa-comment-alt" style="color:#94a3b8;font-size:10px"></i> ' + R8.esc(b.observacoes) + '</span>'
             : '';
         return '<div class="item-lista" style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">'
-            + '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;flex:1 1 100%;min-width:0">'
-            + '<span style="min-width:0;white-space:normal;word-break:break-word">'
+            + '<span style="flex:1 1 100%;min-width:0;white-space:normal;word-break:break-word">'
             + '<span style="font-size:13px"><strong>' + R8.esc(b.codigo) + '</strong>'
             + (b.descricao ? ' — ' + R8.esc(b.descricao) : '')
             + '</span>'
             + linhaTipoCapacidade
             + '<div style="margin-top:5px"><span style="background:' + corBadge + ';border-radius:6px;white-space:nowrap;padding:1px 7px;font-size:11px;color:' + corTexto + ';font-weight:700">' + txtBadge + '</span></div>'
             + obsHtml + '</span>'
-            + '<button class="r8-btn-acao r8-btn-qr" title="Gerar QR Code" onclick="gerarQRBarril(\'' + R8.esc(b.codigo) + '\')"><i class="fas fa-qrcode"></i></button>'
-            + '</div>'
             + '<div class="item-acoes" style="flex-shrink:0">'
             + (aguardandoRetorno ? '<button class="r8-btn-acao" title="Registrar Recebimento (envia para Aguardando Sanitização)" style="background:#16a34a;color:#fff" onclick="_confirmarRecebimentoBarril(\'' + R8.esc(b.codigo) + '\')"><i class="fas fa-undo"></i></button>' : '')
             + (aguardando ? '<button class="r8-btn-acao" title="Registrar Sanitização deste barril" style="background:#0ea5e9;color:#fff" onclick="_irSanitizarBarril(\'' + R8.esc(b.codigo) + '\')"><i class="fas fa-pump-soap"></i></button>' : '')
             + '<button class="r8-btn-acao r8-btn-editar" title="Editar" onclick="editarBarrilERP(' + i + ')"><i class="fas fa-pen"></i></button>'
             + '<button class="r8-btn-acao r8-btn-excluir" title="Excluir" onclick="excluirBarrilERP(' + i + ')"><i class="fas fa-trash"></i></button>'
+            + '<button class="r8-btn-acao r8-btn-qr" title="Gerar QR Code" onclick="gerarQRBarril(\'' + R8.esc(b.codigo) + '\')"><i class="fas fa-qrcode"></i></button>'
             + '</div></div>';
     }).join('') : '<div class="card-item">Nenhum barril cadastrado</div>';
 };
@@ -10885,7 +10832,7 @@ function atualizarTabelaEstoqueAgrupada(){
         if(tipo && i.tipo !== tipo) return;
         var key = i.codigo + '|' + i.descricao + '|' + i.tipo;
         if (mapa.has(key)) return; // já processado — evita recontar quando há mais de um registro (compra/lote) do mesmo código
-        var unidade = i.unidade || (i.tipo==='Malte'||i.tipo==='Adjunto'?'kg':(i.tipo==='Coadjuvantes'?'ml':'g'));
+        var unidade = i.unidade || (i.tipo==='Malte'||i.tipo==='Adjunto'?'kg':'g');
         // Saldo = Entrada (Cadastro) − Saída (Produção) — mesmo cálculo em
         // toda a tela, sem depender de qual registro é "o" registro do código.
         var saldo = _r8SaldoAgrupadoInsumo(i.codigo);
@@ -11310,87 +11257,6 @@ function darBaixaEstoque(loteChave, qtd, tipo, destino) {
     return true;
 }
 
-// ═══ PUBLICAÇÃO SEGURA DA VENDA (2026-09-22) — grava uma cópia redigida (sem
-// valor/preço/forma de pagamento) num nó separado e indexado pelo id real da
-// venda, pra rota pública de QR (?venda=) parar de expor o histórico
-// financeiro completo ao ler vendasPDV/vendasTaps inteiros. Escrita direta e
-// isolada — não entra no payload do salvamento geral (dadosERP), então nunca
-// é sobrescrita/apagada pelo save periódico. Falha em silêncio se offline;
-// nunca bloqueia o registro da venda. Usa o node "rastreioPublico" que já
-// existe nas regras do Firebase (leitura pública, escrita só de usuário
-// aprovado) — nenhuma regra nova precisa ser criada.
-function _r8PublicarVendaSegura(venda) {
-    try {
-        var db = window.db;
-        if (!db || typeof db.ref !== 'function' || !venda || !venda.id) return;
-        var ficha = (dadosERP.fichasTecnicas || []).find(function(f){ return f && f.lote === venda.lote; });
-        db.ref('erp/rota8cervejaria/rastreioPublico/vendas/' + venda.id).set({
-            id: venda.id,
-            tipo: venda.tipo || '',
-            lote: venda.lote || '',
-            estilo: venda.estilo || '',
-            dataProducao: ficha ? (ficha.dataProducao || null) : null,
-            data: venda.data || '',
-            dataRetorno: venda.dataRetorno || null,
-            destino: venda.destino || (venda.tipo === 'TAP' ? 'TAPs Brewpub' : ''),
-            quantidade: venda.quantidade || 0,
-            tipoEmbalagem: venda.tipoEmbalagem || '',
-            observacoes: venda.observacoes || ''
-        }).catch(function(){});
-    } catch(e) {}
-}
-
-// ═══ SINCRONIZAÇÃO VENDA → FINANCEIRO (2026-09-22, corrigido 2026-09-22) —
-// espelha a venda PDV/TAP recém-salva como um lançamento em Financeiro >
-// Vendas (dadosERP.financeiro.r8v — é sincronizado via Firebase pelo mesmo
-// mecanismo do resto do ERP, não é localStorage isolado como eu descrevi
-// antes por engano). Idempotente (checa origemId antes de duplicar).
-// IMPORTANTE: NÃO usa setVendas()/DB.set() aqui de propósito — aquilo
-// dispara seu próprio salvarDadosFirebase() imediatamente, e chamado nesse
-// meio-tempo entre o push da venda e o salvarDadosLocal() logo depois, cria
-// duas gravações concorrentes que competem entre si; a que perde a corrida
-// pode gravar por cima sem incluir a mudança da outra, perdendo o registro
-// do Financeiro em silêncio (foi exatamente o bug relatado em teste). Por
-// isso só mutamos dadosERP.financeiro.r8v em memória aqui, e quem persiste
-// de fato é o salvarDadosLocal() chamado logo em seguida — uma única
-// gravação cobrindo venda + financeiro juntos.
-function _r8SincronizarVendaFinanceiro(venda) {
-    try {
-        if (!venda || !venda.id) return;
-        if (!dadosERP.financeiro) dadosERP.financeiro = {};
-        var vendas = dadosERP.financeiro.r8v || [];
-        if (vendas.some(function(v){ return v.origemId === venda.id; })) return;
-        var ehTAP = venda.tipo === 'TAP';
-        var desc = (ehTAP ? 'Transferência TAP' : 'Venda PDV') + ' — Lote ' + (venda.lote || '') + (venda.destino ? (' — ' + venda.destino) : '');
-        vendas.push({
-            id: (typeof uid === 'function') ? uid() : ('sync_' + Date.now()),
-            data: venda.data || '',
-            valor: (typeof round2 === 'function') ? round2(venda.valorTotal || 0) : (venda.valorTotal || 0),
-            tipo: 'Balcão / Presencial',
-            descricao: desc,
-            pagamento: venda.pagamento || '',
-            status: (venda.pagamento === 'A prazo') ? 'pendente' : 'recebido',
-            criadoEm: new Date().toISOString(),
-            origemId: venda.id,
-            origemTipo: venda.tipo || ''
-        });
-        dadosERP.financeiro.r8v = vendas;
-    } catch(e) {}
-}
-
-// ═══ REMOÇÃO VENDA → FINANCEIRO (2026-09-23) — espelha a exclusão de uma
-// venda PDV/TAP removendo o lançamento correspondente (por origemId) de
-// dadosERP.financeiro.r8v, pra Financeiro/Contas zerarem junto. Mesma regra
-// do sync de criação: só muta em memória, quem persiste é o
-// salvarDadosLocal() chamado logo em seguida (evita a corrida de duas
-// gravações concorrentes).
-function _r8RemoverVendaFinanceiro(venda) {
-    try {
-        if (!venda || !venda.id || !dadosERP.financeiro || !dadosERP.financeiro.r8v) return;
-        dadosERP.financeiro.r8v = dadosERP.financeiro.r8v.filter(function(v){ return v.origemId !== venda.id; });
-    } catch(e) {}
-}
-
 function salvarVendaPDV(){
     let loteChave=document.getElementById('vendaLotePDV')?.value;
     let data=document.getElementById('vendaDataPDV')?.value;
@@ -11405,11 +11271,8 @@ function salvarVendaPDV(){
     if(!prod){R8.toast.erro('Lote/embalagem não encontrado.');return;}
     if(!darBaixaEstoque(loteChave,qtd,'PDV',destino))return;
     if(!dadosERP.vendasPDV)dadosERP.vendasPDV=[];
-    var _novaVendaPDV={id:'V'+Date.now()+Math.random().toString(36).slice(2,7),tipo:'PDV',lote,tipoEmbalagem:prod.tipoEmbalagem||'',embalagemCodigo:prod.embalagemCodigo||'',embalagemDescricao:prod.embalagemDescricao||'',data,destino,estilo:prod.estilo,quantidade:qtd,precoPorLitro:preco,valorTotal:(qtd*preco),pagamento,observacoes:obs};
-    dadosERP.vendasPDV.push(_novaVendaPDV);
-    _r8SincronizarVendaFinanceiro(_novaVendaPDV);
+    dadosERP.vendasPDV.push({id:'V'+Date.now()+Math.random().toString(36).slice(2,7),tipo:'PDV',lote,tipoEmbalagem:prod.tipoEmbalagem||'',embalagemCodigo:prod.embalagemCodigo||'',embalagemDescricao:prod.embalagemDescricao||'',data,destino,estilo:prod.estilo,quantidade:qtd,precoPorLitro:preco,valorTotal:(qtd*preco),pagamento,observacoes:obs});
     salvarDadosLocal();
-    _r8PublicarVendaSegura(_novaVendaPDV);
     document.getElementById('vendaLotePDV').value='';document.getElementById('vendaEstiloPDV').value='';document.getElementById('vendaDataPDV').value=obterData();document.getElementById('vendaNomePDV').value='';document.getElementById('vendaQtdePDV').value='';document.getElementById('vendaObsPDV').value='';var pEl=document.getElementById('vendaPrecoPDV');if(pEl)pEl.value='';var tEl=document.getElementById('vendaTotalPDV');if(tEl){tEl.value='';tEl.style.background='#f0fdf4';}var pgEl=document.getElementById('vendaPagamentoPDV');if(pgEl)pgEl.value='';
     R8.toast.ok('Venda PDV registrada — Lote: '+lote+' | '+qtd+'L');
     aplicarFiltrosVendasPDV();atualizarTabelaProdutoAcabado();popularSelectLotesDisponveis('vendaLotePDV','vendaEstiloPDV');
@@ -11431,11 +11294,8 @@ function salvarVendaTAP(){
     if(!prod){R8.toast.erro('Lote/embalagem não encontrado.');return;}
     if(!darBaixaEstoque(loteChave,qtd,'TAP','TAPs Brewpub'))return;
     if(!dadosERP.vendasTaps)dadosERP.vendasTaps=[];
-    var _novaVendaTAP={id:'V'+Date.now()+Math.random().toString(36).slice(2,7),tipo:'TAP',lote,tipoEmbalagem:prod.tipoEmbalagem||'',embalagemCodigo:prod.embalagemCodigo||'',embalagemDescricao:prod.embalagemDescricao||'',data,estilo:prod.estilo,quantidade:qtd,precoPorLitro:preco,valorTotal:(qtd*preco),pagamento,observacoes:obs,saldoCamaraFriaApos:prod.camaraFria};
-    dadosERP.vendasTaps.push(_novaVendaTAP);
-    _r8SincronizarVendaFinanceiro(_novaVendaTAP);
+    dadosERP.vendasTaps.push({id:'V'+Date.now()+Math.random().toString(36).slice(2,7),tipo:'TAP',lote,tipoEmbalagem:prod.tipoEmbalagem||'',embalagemCodigo:prod.embalagemCodigo||'',embalagemDescricao:prod.embalagemDescricao||'',data,estilo:prod.estilo,quantidade:qtd,precoPorLitro:preco,valorTotal:(qtd*preco),pagamento,observacoes:obs,saldoCamaraFriaApos:prod.camaraFria});
     salvarDadosLocal();
-    _r8PublicarVendaSegura(_novaVendaTAP);
     document.getElementById('vendaLoteTAP').value='';document.getElementById('vendaEstiloTAP').value='';document.getElementById('vendaDataTAP').value=obterData();document.getElementById('vendaQtdeTAP').value='';document.getElementById('vendaObsTAP').value='';var pEl=document.getElementById('vendaPrecoTAP');if(pEl)pEl.value='';var tEl=document.getElementById('vendaTotalTAP');if(tEl){tEl.value='';tEl.style.background='#f0fdf4';}var pgEl=document.getElementById('vendaPagamentoTAP');if(pgEl)pgEl.value='';
     R8.toast.ok('Venda TAP registrada — Lote: '+lote+' | '+qtd+'L');
     aplicarFiltrosVendasTAP();atualizarTabelaProdutoAcabado();popularSelectLotesDisponveis('vendaLoteTAP','vendaEstiloTAP');
@@ -11514,7 +11374,6 @@ window.removerVendaPDV=function(i){confirmarAcao({titulo:'Remover venda PDV',msg
         }
     }
     dadosERP.vendasPDV.splice(i,1);
-    _r8RemoverVendaFinanceiro(v);
     salvarDadosLocal();
     aplicarFiltrosVendasPDV();
     if (typeof atualizarTabelaProdutoAcabado === 'function') atualizarTabelaProdutoAcabado();
@@ -11588,7 +11447,6 @@ window.removerVendaTAP=function(i){confirmarAcao({titulo:'Remover transferência
         }
     }
     dadosERP.vendasTaps.splice(i,1);
-    _r8RemoverVendaFinanceiro(v);
     salvarDadosLocal();
     aplicarFiltrosVendasTAP();
     if (typeof atualizarTabelaProdutoAcabado === 'function') atualizarTabelaProdutoAcabado();
@@ -12525,7 +12383,7 @@ window.gerarPDFEstoque=function(){
     let mapa=new Map();
     dadosERP.insumos.forEach(function(i){
         let k=i.codigo+'|'+i.descricao+'|'+i.tipo+'|'+(i.lote||'')+'|'+(i.produtor||'')+'|'+(i.fornecedor||'');
-        let e=mapa.get(k)||{codigo:i.codigo,descricao:i.descricao,tipo:i.tipo,lote:i.lote||'—',produtor:i.produtor||'—',fornecedor:i.fornecedor||'—',qtdTotal:0,unidade:i.unidade||(i.tipo==='Malte'||i.tipo==='Adjunto'?'kg':(i.tipo==='Coadjuvantes'?'ml':'g')),valorTotal:0};
+        let e=mapa.get(k)||{codigo:i.codigo,descricao:i.descricao,tipo:i.tipo,lote:i.lote||'—',produtor:i.produtor||'—',fornecedor:i.fornecedor||'—',qtdTotal:0,unidade:i.unidade||(i.tipo==='Malte'||i.tipo==='Adjunto'?'kg':'g'),valorTotal:0};
         e.qtdTotal+=i.qtd||0;e.valorTotal+=i.valorTotal||0;mapa.set(k,e);
     });
     // Agrupar por tipo
@@ -16725,7 +16583,7 @@ if(document.readyState === 'loading'){
         <!-- Filtros -->
         <div class="filtros-estoque">
             <div class="campo-linha"><label>Buscar</label><div class="busca-wrap"><input type="text" id="buscaEstoque" placeholder="Código, descrição..." oninput="atualizarTabelaEstoqueAgrupada()" autocomplete="off"><div class="busca-dropdown" id="ddBuscaEstoque"></div></div></div>
-            <div class="campo-linha"><label>Tipo</label><select id="filtroTipoEstoqueNovo" onchange="atualizarTabelaEstoqueAgrupada()"><option value="">Todos</option><option>Malte</option><option>Lúpulos</option><option>Levedura</option><option>Adjunto</option><option>Especiaria</option><option>Coadjuvantes</option></select></div>
+            <div class="campo-linha"><label>Tipo</label><select id="filtroTipoEstoqueNovo" onchange="atualizarTabelaEstoqueAgrupada()"><option value="">Todos</option><option>Malte</option><option>Lúpulos</option><option>Levedura</option><option>Adjunto</option><option>Especiaria</option></select></div>
             <div class="filtro-checkbox"><input type="checkbox" id="estoqueBaixoCheck" onchange="atualizarTabelaEstoqueAgrupada()"><label for="estoqueBaixoCheck">Baixo estoque</label></div>
         </div>
     </div>
@@ -16935,14 +16793,12 @@ if(document.readyState === 'loading'){
             <button class="btn-insumo" onclick="mostrarFormERP('formInsumoLupuloProducao')"><i class="fas fa-plus-circle"></i> Lúpulo</button>
             <button class="btn-insumo" onclick="mostrarFormERP('formInsumoLeveduraProducao')"><i class="fas fa-plus-circle"></i> Levedura</button>
             <button class="btn-insumo" onclick="mostrarFormERP('formInsumoEspeciariaProducao')"><i class="fas fa-plus-circle"></i> Especiaria</button>
-            <button class="btn-insumo" onclick="mostrarFormERP('formInsumoCoadjuvanteProducao')"><i class="fas fa-plus-circle"></i> Coadjuvante</button>
         </div>
         <div id="formInsumoMalteProducao" class="form-flutuante"><h3>Adicionar Malte</h3><div class="campo-linha"><label>Selecione *</label><select id="insumoMalteSelectProducao"></select></div><div class="campo-linha"><label>Quantidade (kg)</label><input type="number" step="0.01" id="insumoMalteQtdProducao" placeholder="-"></div><button class="btn-salvar-insumo" onclick="salvarInsumoCategoriaERP('malte')"><i class="fas fa-check-circle"></i> Salvar</button><button class="btn-cancelar" onclick="fecharFormERP('formInsumoMalteProducao')"><i class="fas fa-times-circle"></i> Cancelar</button></div>
         <div id="formInsumoAdjuntoProducao" class="form-flutuante"><h3>Adicionar Adjunto</h3><div class="campo-linha"><label>Selecione *</label><select id="insumoAdjuntoSelectProducao"></select></div><div class="campo-linha"><label>Quantidade (kg)</label><input type="number" step="0.01" id="insumoAdjuntoQtdProducao" placeholder="-"></div><button class="btn-salvar-insumo" onclick="salvarInsumoCategoriaERP('adjunto')"><i class="fas fa-check-circle"></i> Salvar</button><button class="btn-cancelar" onclick="fecharFormERP('formInsumoAdjuntoProducao')"><i class="fas fa-times-circle"></i> Cancelar</button></div>
         <div id="formInsumoLupuloProducao" class="form-flutuante"><h3>Adicionar Lúpulo</h3><div class="campo-linha"><label>Selecione *</label><select id="insumoLupuloSelectProducao"></select></div><div class="campo-linha"><label>Quantidade (g)</label><input type="number" step="0.1" id="insumoLupuloQtdProducao" placeholder="-"></div><button class="btn-salvar-insumo" onclick="salvarInsumoCategoriaERP('lupulo')"><i class="fas fa-check-circle"></i> Salvar</button><button class="btn-cancelar" onclick="fecharFormERP('formInsumoLupuloProducao')"><i class="fas fa-times-circle"></i> Cancelar</button></div>
         <div id="formInsumoLeveduraProducao" class="form-flutuante"><h3>Adicionar Levedura</h3><div class="campo-linha"><label>Selecione *</label><select id="insumoLeveduraSelectProducao"></select></div><div class="campo-linha"><label>Quantidade (g)</label><input type="number" step="0.1" id="insumoLeveduraQtdProducao" placeholder="-"></div><button class="btn-salvar-insumo" onclick="salvarInsumoCategoriaERP('levedura')"><i class="fas fa-check-circle"></i> Salvar</button><button class="btn-cancelar" onclick="fecharFormERP('formInsumoLeveduraProducao')"><i class="fas fa-times-circle"></i> Cancelar</button></div>
         <div id="formInsumoEspeciariaProducao" class="form-flutuante"><h3>Adicionar Especiaria</h3><div class="campo-linha"><label>Selecione *</label><select id="insumoEspeciariaSelectProducao"></select></div><div class="campo-linha"><label>Quantidade (g)</label><input type="number" step="0.1" id="insumoEspeciariaQtdProducao" placeholder="-"></div><button class="btn-salvar-insumo" onclick="salvarInsumoCategoriaERP('especiaria')"><i class="fas fa-check-circle"></i> Salvar</button><button class="btn-cancelar" onclick="fecharFormERP('formInsumoEspeciariaProducao')"><i class="fas fa-times-circle"></i> Cancelar</button></div>
-        <div id="formInsumoCoadjuvanteProducao" class="form-flutuante"><h3>Adicionar Coadjuvante</h3><div class="campo-linha"><label>Selecione *</label><select id="insumoCoadjuvanteSelectProducao"></select></div><div class="campo-linha"><label>Quantidade (ml)</label><input type="number" step="0.1" id="insumoCoadjuvanteQtdProducao" placeholder="-"></div><button class="btn-salvar-insumo" onclick="salvarInsumoCategoriaERP('coadjuvante')"><i class="fas fa-check-circle"></i> Salvar</button><button class="btn-cancelar" onclick="fecharFormERP('formInsumoCoadjuvanteProducao')"><i class="fas fa-times-circle"></i> Cancelar</button></div>
         <div id="listaInsumosProducao"></div>
         <div class="secao">Mosturação</div>
         <button class="btn-add-item" onclick="mostrarFormERP('formMosturaProducao')"><i class="fas fa-plus-circle"></i> Adicionar Etapa</button>
@@ -17207,7 +17063,7 @@ if(document.readyState === 'loading'){
 
     <div id="telaInsumos" class="tela">
         <div class="hdr"><div class="hdr-linha1"><button class="btn-tela-voltar" onclick="irParaTelaERP('telaSubCadastros')"><i class="fas fa-arrow-left"></i> Voltar</button><h2>Insumos</h2></div><div class="hdr-acoes"><button class="btn-tela-pdf" onclick="gerarPDFCadastro('insumos')"><i class="fas fa-file-pdf"></i> PDF</button></div></div>
-        <div id="formInsumo" class="form-flutuante"><h3>Novo Insumo</h3><div class="campo-linha"><label>Tipo</label><select id="insTipo" onchange="atualizarCampoInsumoERP()"><option>Malte</option><option>Levedura</option><option>Lúpulos</option><option>Adjunto</option><option>Especiaria</option><option>Coadjuvantes</option></select></div><div class="campo-linha"><label>Descrição</label><input type="text" id="insDescricao" placeholder="-" oninput="document.getElementById('insCodigo').style.borderColor='';document.getElementById('insCodigo').style.background='';"></div><div class="campo-linha"><label>Código *</label><div style="display:flex;gap:6px;align-items:center"><input type="text" id="insCodigo" placeholder="-" style="flex:1" required><button type="button" onclick="_gerarCodInsumo()" style="flex-shrink:0;padding:8px 12px;background:#c49a2b;color:#fff;border:none;border-radius:9px;font-size:11px;cursor:pointer;font-weight:700;white-space:nowrap"><i class="fas fa-magic"></i> Auto</button></div></div><div class="campo-linha"><label>Lote</label><div class="busca-wrap"><input type="text" id="insLote" placeholder="-" autocomplete="off"><div class="busca-dropdown" id="ddInsLote"></div></div></div><div class="campo-linha"><label>Produtor</label><input type="text" id="insProdutor" placeholder="-"></div><div class="campo-linha"><label>Fornecedor</label><input type="text" id="insFornecedor" placeholder="-"></div><div class="linha-dupla"><div><label id="lblQuantidade">Quantidade (kg)</label><input type="number" step="0.01" id="insQtd" placeholder="-"></div><div><label id="lblValor">Valor (R$/kg)</label><input type="text" inputmode="decimal" id="insValor" placeholder="R$ 0,00" oninput="R8.mascaraMoeda(this)"></div></div><div class="campo-linha"><label>Validade</label><input type="date" id="insValidade" placeholder="-"></div><div class="campo-linha"><label>Obs</label><textarea id="insObs" rows="2" placeholder="-"></textarea></div><div class="campo-linha">
+        <div id="formInsumo" class="form-flutuante"><h3>Novo Insumo</h3><div class="campo-linha"><label>Tipo</label><select id="insTipo" onchange="atualizarCampoInsumoERP()"><option>Malte</option><option>Levedura</option><option>Lúpulos</option><option>Adjunto</option><option>Especiaria</option></select></div><div class="campo-linha"><label>Descrição</label><input type="text" id="insDescricao" placeholder="-" oninput="document.getElementById('insCodigo').style.borderColor='';document.getElementById('insCodigo').style.background='';"></div><div class="campo-linha"><label>Código *</label><div style="display:flex;gap:6px;align-items:center"><input type="text" id="insCodigo" placeholder="-" style="flex:1" required><button type="button" onclick="_gerarCodInsumo()" style="flex-shrink:0;padding:8px 12px;background:#c49a2b;color:#fff;border:none;border-radius:9px;font-size:11px;cursor:pointer;font-weight:700;white-space:nowrap"><i class="fas fa-magic"></i> Auto</button></div></div><div class="campo-linha"><label>Lote</label><div class="busca-wrap"><input type="text" id="insLote" placeholder="-" autocomplete="off"><div class="busca-dropdown" id="ddInsLote"></div></div></div><div class="campo-linha"><label>Produtor</label><input type="text" id="insProdutor" placeholder="-"></div><div class="campo-linha"><label>Fornecedor</label><input type="text" id="insFornecedor" placeholder="-"></div><div class="linha-dupla"><div><label id="lblQuantidade">Quantidade (kg)</label><input type="number" step="0.01" id="insQtd" placeholder="-"></div><div><label id="lblValor">Valor (R$/kg)</label><input type="text" inputmode="decimal" id="insValor" placeholder="R$ 0,00" oninput="R8.mascaraMoeda(this)"></div></div><div class="campo-linha"><label>Validade</label><input type="date" id="insValidade" placeholder="-"></div><div class="campo-linha"><label>Obs</label><textarea id="insObs" rows="2" placeholder="-"></textarea></div><div class="campo-linha">
             <label>Laudo de Análise <span style="font-size:10px;color:#94a3b8">(PDF, JPG ou PNG · max 5 MB)</span></label>
             <div style="display:flex;align-items:center;gap:8px">
                 <label style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:#eff6ff;border:1.5px dashed #3b82f6;border-radius:10px;cursor:pointer;font-size:12px;color:#1d4ed8;font-weight:600;flex:1">
@@ -17238,7 +17094,7 @@ if(document.readyState === 'loading'){
             <select id="filtroTipoInsumo" onchange="atualizarListaInsumosERP()"
                 style="height:36px;padding:0 8px;border:1.5px solid #e0d8ce;border-radius:9px;font-size:12px;font-family:inherit;background:#faf8f5;color:#2c1810">
                 <option value="">Todos os tipos</option>
-                <option>Malte</option><option>Levedura</option><option>Lúpulos</option><option>Adjunto</option><option>Especiaria</option><option>Coadjuvantes</option>
+                <option>Malte</option><option>Levedura</option><option>Lúpulos</option><option>Adjunto</option><option>Especiaria</option>
             </select>
         </div>
         <div id="listaInsumosERP"></div>
@@ -17799,9 +17655,11 @@ if(document.readyState === 'loading'){
 <div id="telaFinanceiro" class="tela">
 
 <div class="hdr">
-  <button onclick="irParaTelaERP('telaMenu')" class="btn-tela-voltar" style="position:absolute;top:16px;left:16px"><i class="fas fa-arrow-left"></i> Voltar</button>
-  <button onclick="abrirAjustes()" style="position:absolute;top:16px;right:16px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:9px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;" title="Ajustes / Backup">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#c49a2b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+  <button onclick="irParaTelaERP('telaMenu')" style="position:absolute;top:16px;left:16px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:10px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer;" title="Voltar ao Menu Principal">
+    <i class="fas fa-arrow-left" style="color:#c49a2b;font-size:15px"></i>
+  </button>
+  <button onclick="abrirAjustes()" style="position:absolute;top:16px;right:16px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:10px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;cursor:pointer;" title="Ajustes / Backup">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#c49a2b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
   </button>
   <img id="hdr-logo" alt="Rota 8 Cervejaria" style="width:72px;height:72px;border-radius:50%;box-shadow:0 0 24px rgba(196,154,43,.3);margin-bottom:10px;"/>
   <h1>Rota 8 Cervejaria</h1>
@@ -17816,9 +17674,18 @@ if(document.readyState === 'loading'){
 <!-- DASHBOARD -->
 <div id="page-dash" class="page active">
   <div style="padding-top:4px;">
-    <!-- 2026-09-23: atalhos "Nova Compra"/"Nova Venda" removidos a pedido do
-         usuário — Compras e Vendas continuam acessíveis pelas abas normais
-         do rodapé. -->
+    <div class="dash-shortcuts">
+      <button class="sc-btn" onclick="navTo('compras')">
+        <div class="sc-icon am"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div>
+        <div class="sc-label">Nova Compra</div>
+        <div class="sc-sub">Lançar despesa</div>
+      </button>
+      <button class="sc-btn" onclick="navTo('vendas')">
+        <div class="sc-icon gr"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div>
+        <div class="sc-label">Nova Venda</div>
+        <div class="sc-sub">Lançar receita</div>
+      </button>
+    </div>
 
     <div class="mes-nav">
       <button onclick="dashMesAnt()">&#8249;</button>
@@ -17862,23 +17729,21 @@ if(document.readyState === 'loading'){
   <input type="file" id="cf-file" accept=".pdf,.xml,image/*" onchange="onCFImport(event)" style="display:none"/>
   <div class="cf-ok" id="cf-ok"></div>
 
+  <div id="compras-itens"></div>
+
   <button class="btn-add-reg" onclick="addCompraItem()">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
     + Registro
   </button>
 
-  <div id="compra-form-wrap" style="display:none">
-    <div id="compras-itens"></div>
-
-    <div class="total-bar am" id="compra-total-bar">
-      <span>Total da Compra</span><strong id="compra-total-val">R$ 0,00</strong>
-    </div>
-
-    <button class="btn-salvar am" onclick="confirmarSalvarCompra()">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-      Registrar Compra
-    </button>
+  <div class="total-bar am" id="compra-total-bar">
+    <span>Total da Compra</span><strong id="compra-total-val">R$ 0,00</strong>
   </div>
+
+  <button class="btn-salvar am" onclick="confirmarSalvarCompra()">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+    Registrar Compra
+  </button>
 
   <div class="hist-header">
     <div class="hist-title">Histórico do mês</div>
@@ -17947,7 +17812,7 @@ if(document.readyState === 'loading'){
 <!-- VENDAS -->
 <div id="page-vendas" class="page">
   <div class="pg-title">Vendas</div>
-  <div class="pg-sub">Sincronizado automaticamente de Vendas/Transferência (PDV/TAP) — sem digitação manual</div>
+  <div class="pg-sub">Registre as receitas do período</div>
 
   <div class="acum-card">
     <div class="mes-chip">
@@ -17961,54 +17826,47 @@ if(document.readyState === 'loading'){
     <div class="ticket-medio">Ticket médio: <span id="venda-ticket">—</span></div>
   </div>
 
-  <!-- 2026-09-22: botão "+ Novo Lançamento" removido de propósito — vendas
-       só podem ser lançadas em Vendas/Transferência (PDV/TAP) e chegam aqui
-       sincronizadas automaticamente. vd-form-wrap continua no DOM (inerte,
-       nunca aberto) só pra não quebrar editarVenda em registros antigos. -->
-
-  <div id="vd-form-wrap" style="display:none">
-    <div class="form-block">
-      <div class="fb-title gr">Novo Lançamento</div>
-      <div class="fld"><label for="vd-data">Data *</label><input type="date" id="vd-data"/></div>
-      <div class="fld-row2">
-        <div class="fld"><label for="vd-valor">Valor R$ *</label><input type="text" id="vd-valor" placeholder="0,00" oninput="fmtInput(this)"/></div>
-        <div class="fld">
-          <label for="vd-tipo">Tipo de Venda</label>
-          <select id="vd-tipo">
-            <option value="">Selecione</option>
-            <option>Balcão / Presencial</option>
-            <option>Delivery</option>
-            <option>Eventos</option>
-            <option>Vendas Online</option>
-            <option>Atacado / B2B</option>
-            <option>Outros</option>
-          </select>
-        </div>
-      </div>
-      <div class="fld" style="margin-top:12px"><label for="vd-desc">Descrição</label><input type="text" id="vd-desc" placeholder="Ex: Vendas sábado, evento especial..."/></div>
+  <div class="form-block">
+    <div class="fb-title gr">Novo Lançamento</div>
+    <div class="fld"><label for="vd-data">Data *</label><input type="date" id="vd-data"/></div>
+    <div class="fld-row2">
+      <div class="fld"><label for="vd-valor">Valor R$ *</label><input type="text" id="vd-valor" placeholder="0,00" oninput="fmtInput(this)"/></div>
       <div class="fld">
-        <label for="vd-pag">Meio de Recebimento</label>
-        <select id="vd-pag">
+        <label for="vd-tipo">Tipo de Venda</label>
+        <select id="vd-tipo">
           <option value="">Selecione</option>
-          <option>Dinheiro</option><option>PIX</option>
-          <option>Cartão Débito</option><option>Cartão Crédito</option>
-          <option>Transferência</option><option>Outros</option>
+          <option>Balcão / Presencial</option>
+          <option>Delivery</option>
+          <option>Eventos</option>
+          <option>Vendas Online</option>
+          <option>Atacado / B2B</option>
+          <option>Outros</option>
         </select>
       </div>
-      <div class="fld">
-        <label>Status</label>
-        <div class="status-row">
-          <div class="status-opt on pago" id="vd-st-rec" onclick="setVendaStatus('recebido')"><div class="status-dot"></div>Recebido</div>
-          <div class="status-opt pend" id="vd-st-pend" onclick="setVendaStatus('pendente')"><div class="status-dot"></div>A Receber</div>
-        </div>
+    </div>
+    <div class="fld" style="margin-top:12px"><label for="vd-desc">Descrição</label><input type="text" id="vd-desc" placeholder="Ex: Vendas sábado, evento especial..."/></div>
+    <div class="fld">
+      <label for="vd-pag">Meio de Recebimento</label>
+      <select id="vd-pag">
+        <option value="">Selecione</option>
+        <option>Dinheiro</option><option>PIX</option>
+        <option>Cartão Débito</option><option>Cartão Crédito</option>
+        <option>Transferência</option><option>Outros</option>
+      </select>
+    </div>
+    <div class="fld">
+      <label>Status</label>
+      <div class="status-row">
+        <div class="status-opt on pago" id="vd-st-rec" onclick="setVendaStatus('recebido')"><div class="status-dot"></div>Recebido</div>
+        <div class="status-opt pend" id="vd-st-pend" onclick="setVendaStatus('pendente')"><div class="status-dot"></div>A Receber</div>
       </div>
     </div>
-
-    <button class="btn-salvar gr" onclick="salvarVenda()">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-      Registrar Venda
-    </button>
   </div>
+
+  <button class="btn-salvar gr" onclick="salvarVenda()">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+    Registrar Venda
+  </button>
 
   <div class="hist-header">
     <div class="hist-title">Lançamentos do mês</div>
@@ -18700,8 +18558,7 @@ function initCompras(){
   if(!comprasInit){
     cIds=[];cCount=0;
     document.getElementById('compras-itens').innerHTML='';
-    const wrap=document.getElementById('compra-form-wrap');
-    if(wrap)wrap.style.display='none';
+    addCompraItem();
     comprasInit=true;
   }
   renderHistCompras();
@@ -18710,268 +18567,6 @@ function initCompras(){
 function tiposOptsHtml(){return TIPOS_COMPRA.map(t=>'<option>'+t+'</option>').join('');}
 function pagOptsHtml(){return PAGTOS_COMPRA.map(p=>'<option>'+p+'</option>').join('');}
 function undOptsHtml(){return UNIDADES.map(u=>'<option>'+u+'</option>').join('');}
-
-// ════ COMPRAS DE INSUMOS → CADASTRO / ESTOQUE DE INSUMOS (automático) ════
-// Compra da Fábrica do tipo "Insumos / Matéria-Prima" traz os mesmos campos do
-// Cadastro de Insumos e, ao gravar, lança sozinha a entrada no Cadastro e no
-// Estoque (o saldo do Estoque é sempre calculado a partir do Cadastro).
-// Vínculo: cada registro do Cadastro nascido de uma compra guarda "compraId"
-// (a Movimentação também) — é isso que permite estornar ao excluir/editar.
-const FIN_TIPO_INS='Insumos / Matéria-Prima';
-const FIN_TIPOS_INSUMO=['Malte','Levedura','Lúpulos','Adjunto','Especiaria','Coadjuvantes'];
-// ═══ FASE 1 — CONTABILIZAÇÃO PADRÃO (2026-09-23): Sanitiz./Mat. Limpeza e
-// Equipamentos passam a ter entrada automática de cadastro também, no mesmo
-// padrão que já existia só para Insumos. Constantes novas, isoladas — o
-// caminho de Insumos (FIN_TIPO_INS acima) continua 100% como estava.
-const FIN_TIPO_LIMPEZA='Sanitiz. / Mat. Limpeza';
-const FIN_TIPO_EQUIP='Equipamentos';
-const FIN_TIPOS_LIMPEZA=['Limpeza/Higienização','Sanitização'];
-const FIN_TIPOS_EQUIP=['Tina de Mostura','Tanques Fermentação/Maturação','Moinho','Trocador de Calor','Lavador de Barril','Outros'];
-const FIN_ORIGEM_COMPRA='Compra Financeira (Fábrica)';
-const FIN_LAUDOS={};
-let finMsgErro='';
-const finUnidIns=t=>(t==='Malte'||t==='Adjunto')?'kg':(t==='Coadjuvantes'?'ml':'g');
-const finNorm=s=>(s||'').toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase().replace(/\s+/g,' ');
-
-// Bloco "Cadastro de Insumos" dividido em 2 pontos de inserção para permitir a
-// ordem de campos pedida em Financeiro > Compras (Tipo do Insumo antes da
-// Descrição; Código/Lote/Validade/Laudo/Produtor/Observações depois dela).
-// Os dois wraps são mostrados/escondidos juntos por ciToggleIns()/edToggleIns().
-// IDs de todos os campos preservados — nenhuma leitura/gravação em JS foi afetada.
-function insTipoHtml(pfx,sfx,id){
-  const fnTipo=pfx==='ci'?'ciToggleIns('+id+')':'edToggleIns()';
-  return '<div id="'+pfx+'-instipo-wrap'+sfx+'" style="display:none">'+
-    '<div id="'+pfx+'-instipo-hdr'+sfx+'" style="font-size:10px;font-weight:800;color:#78716c;text-transform:uppercase;letter-spacing:.07em;margin-top:16px;padding-top:12px;border-top:1px dashed #d6cdbe">Cadastro de Insumos (entrada automática no Estoque)</div>'+
-    '<div class="fld" style="margin-top:12px"><label id="'+pfx+'-instipo-lbl'+sfx+'">Tipo do Insumo *</label><select id="'+pfx+'-instipo'+sfx+'" onchange="'+fnTipo+'"><option value="">Selecione</option>'+FIN_TIPOS_INSUMO.map(function(t){return '<option>'+t+'</option>';}).join('')+'</select></div>'+
-  '</div>';
-}
-function insBlockHtml(pfx,sfx,id){
-  const ci=pfx==='ci';
-  const fnAuto=ci?'ciGerarCodIns('+id+')':'edGerarCodIns()';
-  let h=
-  '<div id="'+pfx+'-ins-wrap'+sfx+'" style="display:none">'+
-    '<div class="fld" style="margin-top:12px"><label>Código *</label><div style="display:flex;gap:6px;align-items:center">'+
-      '<input type="text" id="'+pfx+'-inscod'+sfx+'" placeholder="-" style="flex:1"/>'+
-      '<button type="button" id="'+pfx+'-inscod-auto'+sfx+'" onclick="'+fnAuto+'" style="flex-shrink:0;padding:10px 12px;background:#c49a2b;color:#fff;border:none;border-radius:9px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">Auto</button>'+
-    '</div></div>'+
-    '<div class="fld" style="margin-top:12px"><label>Lote</label><input type="text" id="'+pfx+'-inslote'+sfx+'" placeholder="-"/></div>'+
-    '<div class="fld" style="margin-top:12px"><label>Validade</label><input type="date" id="'+pfx+'-insval'+sfx+'"/></div>';
-  if(ci){
-    h+='<div class="fld" style="margin-top:12px"><label>Laudo de Análise <span style="font-size:10px;color:#a8a29e;text-transform:none;letter-spacing:0">(PDF, JPG ou PNG · máx. 5 MB)</span></label>'+
-      '<div style="display:flex;align-items:center;gap:8px">'+
-        '<div onclick="document.getElementById(\'ci-laudo-file-'+id+'\').click()" style="display:flex;align-items:center;gap:6px;padding:10px 14px;background:#eff6ff;border:1.5px dashed #3b82f6;border-radius:10px;cursor:pointer;font-size:12px;color:#1d4ed8;font-weight:600;flex:1"><span id="ci-laudo-lbl-'+id+'">Selecionar arquivo...</span></div>'+
-        '<input type="file" id="ci-laudo-file-'+id+'" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="ciLaudoSel(this,'+id+')"/>'+
-        '<button type="button" id="ci-laudo-clr-'+id+'" onclick="ciLaudoLimpar('+id+')" style="display:none;background:none;border:none;color:#dc2626;cursor:pointer;font-size:16px" title="Remover laudo">✕</button>'+
-      '</div></div>';
-  }
-  h+='<div class="fld" style="margin-top:12px"><label>Produtor/Fabricante</label><input type="text" id="'+pfx+'-insprod'+sfx+'" placeholder="-"/></div>'+
-    '<div class="fld" style="margin-top:12px"><label>Observações</label><textarea id="'+pfx+'-insobs'+sfx+'" rows="2" placeholder="-"></textarea></div>';
-  return h+'</div>';
-}
-
-// ── Formulário de nova compra ──
-function ciInsAtivo(id){
-  const f=document.getElementById('seg-fab-'+id);
-  const t=document.getElementById('ci-tipo-'+id);
-  return !!(f&&t&&f.classList.contains('on')&&t.value===FIN_TIPO_INS);
-}
-// 2026-09-23: versão generalizada — devolve qual dos 3 destinos de cadastro
-// a compra ativa ('insumo'|'limpeza'|'equipamento'), ou '' se nenhum.
-// ciInsAtivo() acima continua existindo e intocada por quem já a chama.
-function ciCategoriaAtiva(id){
-  const f=document.getElementById('seg-fab-'+id);
-  const t=document.getElementById('ci-tipo-'+id);
-  if(!f||!t||!f.classList.contains('on'))return '';
-  if(t.value===FIN_TIPO_INS)return 'insumo';
-  if(t.value===FIN_TIPO_LIMPEZA)return 'limpeza';
-  if(t.value===FIN_TIPO_EQUIP)return 'equipamento';
-  return '';
-}
-function ciTiposSubopcao(cat){
-  if(cat==='limpeza')return FIN_TIPOS_LIMPEZA;
-  if(cat==='equipamento')return FIN_TIPOS_EQUIP;
-  return FIN_TIPOS_INSUMO;
-}
-function ciLabelBloco(cat){
-  if(cat==='limpeza')return 'Cadastro de Limpeza/Sanitização (entrada automática no Estoque)';
-  if(cat==='equipamento')return 'Cadastro de Equipamentos (Patrimônio Fixo — entrada automática)';
-  return 'Cadastro de Insumos (entrada automática no Estoque)';
-}
-function ciLabelSubopcao(cat){
-  if(cat==='limpeza')return 'Tipo do Produto *';
-  if(cat==='equipamento')return 'Tipo do Equipamento *';
-  return 'Tipo do Insumo *';
-}
-function ciToggleIns(id){
-  const cat=ciCategoriaAtiva(id);
-  const ativo=!!cat;
-  const w=document.getElementById('ci-ins-wrap-'+id);
-  if(w)w.style.display=ativo?'block':'none';
-  const wt=document.getElementById('ci-instipo-wrap-'+id);
-  if(wt)wt.style.display=ativo?'block':'none';
-  // 2026-09-23: relabela o bloco e repopula as opções do sub-select conforme
-  // a categoria (insumo/limpeza/equipamento) — só texto/opções, não muda
-  // nenhum id de campo nem comportamento de quem já usava isso pra Insumo.
-  const hdr=document.getElementById('ci-instipo-hdr-'+id);
-  if(hdr)hdr.textContent=ciLabelBloco(cat);
-  const lbl=document.getElementById('ci-instipo-lbl-'+id);
-  if(lbl)lbl.textContent=ciLabelSubopcao(cat);
-  const sel=document.getElementById('ci-instipo-'+id);
-  if(sel&&sel.getAttribute('data-cat')!==cat){
-    const optsList=ciTiposSubopcao(cat);
-    sel.innerHTML='<option value="">Selecione</option>'+optsList.map(function(t){return '<option>'+t+'</option>';}).join('');
-    sel.setAttribute('data-cat',cat);
-  }
-  const tIns=(document.getElementById('ci-instipo-'+id)||{}).value||'';
-  const u=(cat==='insumo'&&tIns)?finUnidIns(tIns):(cat==='limpeza'?'L':'');
-  const lq=document.getElementById('ci-lbl-qtd-'+id);
-  const lv=document.getElementById('ci-lbl-vun-'+id);
-  if(lq)lq.textContent=u?'Quantidade ('+u+') *':'Quantidade *';
-  if(lv)lv.textContent=u?'Valor R$/'+u+' *':'Valor R$/Unid *';
-  if(u){const und=document.getElementById('ci-und-'+id);if(und)und.value=u;}
-}
-// Sugere o código: se o mesmo produto (mesma descrição) já existe no Cadastro,
-// reaproveita o código dele (o saldo soma no mesmo código); senão gera um novo.
-function finSugerirCodigo(desc,outros){
-  const d=(desc||'').trim();
-  if(!d)return '';
-  const dn=finNorm(d);
-  const lista=(dadosERP.insumos||[]).map(function(i){return {cod:i.codigo||'',desc:i.descricao||''};}).concat(outros||[]);
-  const igual=lista.find(function(x){return x.cod&&finNorm(x.desc)===dn;});
-  if(igual)return igual.cod;
-  const sigla=window._gerarSigla(d,6);
-  return sigla+'-'+window._proximoSequencial(lista.map(function(x){return x.cod;}),sigla+'-');
-}
-function ciGerarCodIns(id){
-  const desc=document.getElementById('ci-desc-'+id).value||'';
-  if(!desc.trim()){showToast('Preencha a Descrição do Produto antes de gerar o código.','err');return;}
-  const outros=[];
-  cIds.forEach(function(o){
-    if(o===id)return;
-    const c=(document.getElementById('ci-inscod-'+o)||{}).value||'';
-    if(c.trim())outros.push({cod:c.trim(),desc:(document.getElementById('ci-desc-'+o)||{}).value||''});
-  });
-  const el=document.getElementById('ci-inscod-'+id);
-  el.value=finSugerirCodigo(desc,outros);
-  el.classList.remove('err');
-}
-function ciLaudoSel(input,id){
-  const f=input.files[0];
-  if(!f)return;
-  if(f.size>5*1024*1024){showToast('Arquivo muito grande. Máximo permitido: 5 MB.','err');input.value='';return;}
-  if(['application/pdf','image/jpeg','image/png'].indexOf(f.type)<0){showToast('Tipo não suportado. Use PDF, JPG ou PNG.','err');input.value='';return;}
-  const r=new FileReader();
-  r.onload=function(e){
-    FIN_LAUDOS[id]={b64:e.target.result,nome:f.name,tipo:f.type};
-    const l=document.getElementById('ci-laudo-lbl-'+id);if(l)l.textContent=f.name;
-    const b=document.getElementById('ci-laudo-clr-'+id);if(b)b.style.display='inline-block';
-  };
-  r.readAsDataURL(f);
-}
-function ciLaudoLimpar(id){
-  delete FIN_LAUDOS[id];
-  const fi=document.getElementById('ci-laudo-file-'+id);if(fi)fi.value='';
-  const l=document.getElementById('ci-laudo-lbl-'+id);if(l)l.textContent='Selecionar arquivo...';
-  const b=document.getElementById('ci-laudo-clr-'+id);if(b)b.style.display='none';
-}
-
-// ── Estoque: apoio (estorno, trava de saldo, atualização de telas) ──
-function finRestaurarEstoque(bkI,bkM){
-  dadosERP.insumos.splice(0,dadosERP.insumos.length,...bkI);
-  dadosERP.movimentacoesEstoque.splice(0,dadosERP.movimentacoesEstoque.length,...bkM);
-}
-function finRemoverEstoqueDaCompra(compraId){
-  const ins=dadosERP.insumos||[],mov=dadosERP.movimentacoesEstoque||[];
-  for(let i=ins.length-1;i>=0;i--){if(ins[i].compraId===compraId)ins.splice(i,1);}
-  for(let i=mov.length-1;i>=0;i--){if(mov[i].compraId===compraId)mov.splice(i,1);}
-}
-// Mesma trava do Cadastro de Insumos: não deixa o saldo do código ficar
-// negativo quando já houve baixa em produção (Ficha Técnica).
-function finSaldoInsuficiente(entrada,novaQtd){
-  const saldoDepois=_r8SaldoAgrupadoInsumo(entrada.codigo)-(entrada.qtd||0)+(novaQtd||0);
-  if(saldoDepois>=-0.0001)return '';
-  return 'Não é possível: já existem '+_r8SaidaProducaoInsumo(entrada.codigo).toFixed(2)+' '+(entrada.unidade||'')+' de "'+entrada.codigo+'" baixados em produção (Ficha Técnica). Isso deixaria o saldo negativo.';
-}
-function finAtualizarTelasInsumos(){
-  try{if(typeof atualizarListaInsumosERP==='function')atualizarListaInsumosERP();}catch(e){}
-  try{if(typeof _renderizarAlertasEstoque==='function')setTimeout(_renderizarAlertasEstoque,200);}catch(e){}
-}
-function finMontarEntrada(compraId,c){
-  const unid=finUnidIns(c.tipo);
-  return {
-    id:R8.novoId(),codigo:c.codigo,lote:c.lote||'',tipo:c.tipo,descricao:c.descricao,
-    produtor:c.produtor||'',fornecedor:c.fornecedor||'',qtd:c.qtd,valor:c.valor,unidade:unid,
-    validade:c.validade||'',valorTotal:c.qtd*c.valor,obs:c.obs||'',
-    laudoNome:c.laudo?c.laudo.nome:'',laudoURL:'',laudoB64:c.laudo?c.laudo.b64:'',laudoTipo:c.laudo?c.laudo.tipo:'',
-    compraId:compraId
-  };
-}
-function finLancarEntrada(entrada){
-  dadosERP.insumos.push(entrada);
-  const saldoAtual=_r8SaldoAgrupadoInsumo(entrada.codigo);
-  dadosERP.movimentacoesEstoque.push({
-    id:Date.now()+'_cmp_'+entrada.compraId,data:obterDataHora(),tipo:'entrada',
-    codigo:entrada.codigo,descricao:entrada.descricao,tipoInsumo:entrada.tipo,
-    quantidade:entrada.qtd,unidade:entrada.unidade,lote:entrada.lote,origem:FIN_ORIGEM_COMPRA,
-    saldoAnterior:saldoAtual-entrada.qtd,saldoAtual:saldoAtual,compraId:entrada.compraId
-  });
-}
-
-// ═══ FASE 1 — CONTABILIZAÇÃO PADRÃO (2026-09-23) ═══
-// Entrada automática pra Cadastro-Limpeza, no mesmo formato que
-// salvarLimpezaERP() usa quando alguém cadastra manualmente — pra ficar
-// idêntico ao que já existe, sem criar um formato paralelo.
-function finLancarEntradaLimpeza(dados){
-  if(!dadosERP.produtosLimpeza)dadosERP.produtosLimpeza=[];
-  dadosERP.produtosLimpeza.push({
-    id:R8.novoId(),
-    codigo:dados.codigo,
-    tipo:dados.tipo,
-    descricao:dados.descricao,
-    lote:dados.lote||'',
-    fabricante:dados.fabricante||'',
-    qtd:dados.qtd,
-    valor:round2(dados.qtd*dados.valorUn),
-    validade:dados.validade||'',
-    obs:dados.obs||'',
-    origemCompraId:dados.compraId||null
-  });
-}
-// Entrada automática pra Cadastro-Equipamentos (Patrimônio Fixo), no mesmo
-// formato que salvarEquipamentoERP() usa. Equipamento é rastreado por
-// unidade física (não por saldo), então se a compra tiver quantidade > 1,
-// gera um registro por unidade, com sufixo -1/-2/... no código pra não
-// colidir.
-function finLancarEntradaEquipamento(dados){
-  if(!dadosERP.equipamentos)dadosERP.equipamentos=[];
-  const n=Math.max(1,Math.round(dados.qtd||1));
-  for(let i=1;i<=n;i++){
-    dadosERP.equipamentos.push({
-      id:R8.novoId(),
-      codigo:n>1?(dados.codigo+'-'+i):dados.codigo,
-      descricao:dados.descricao,
-      tipo:dados.tipo,
-      situacao:'Ativo',
-      valor:dados.valorUn,
-      obs:dados.obs||'',
-      origemCompraId:dados.compraId||null
-    });
-  }
-}
-// 2026-09-23 — corrige lacuna: excluir uma entrada de Limpeza ou Equipamento
-// que veio de uma Compra (Financeiro) agora também remove o lançamento
-// financeiro de origem, pra não ficar um lançamento "fantasma" no Financeiro
-// depois que o item que ele gerou foi apagado do Cadastro. Só muta em
-// memória — quem persiste é o salvarDadosLocal() que excluirLimpezaERP()/
-// excluirEquipamentoERP() já chamam logo depois, numa gravação só.
-function _r8RemoverCompraPorOrigem(origemCompraId){
-  try{
-    if(!origemCompraId||!dadosERP.financeiro||!dadosERP.financeiro.r8c)return false;
-    const antes=dadosERP.financeiro.r8c.length;
-    dadosERP.financeiro.r8c=dadosERP.financeiro.r8c.filter(function(c){return c.id!==origemCompraId;});
-    return dadosERP.financeiro.r8c.length<antes;
-  }catch(e){return false;}
-}
 
 function toggleCiDet(id){
   const body=document.getElementById('ci-det-'+id);
@@ -18994,7 +18589,7 @@ function addCompraItem(){
     '<div class="fld" style="margin-bottom:14px;">'+
       '<label>Seção *</label>'+
       '<div class="seg-toggle">'+
-        '<button type="button" class="seg-btn sec-fab on" id="seg-fab-'+id+'" onclick="setSeg('+id+',\'fab\')">'+
+        '<button type="button" class="seg-btn fab on" id="seg-fab-'+id+'" onclick="setSeg('+id+',\'fab\')">'+
           '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 11h1a3 3 0 0 1 0 6h-1"/><path d="M9 12v6"/><path d="M13 12v6"/><path d="M14 7.5c-1 0-1.44.5-3 .5s-2-.5-3-.5-1.44.5-3 .5"/><path d="M14 4.5c-1 0-1.44.5-3 .5s-2-.5-3-.5-1.44.5-3 .5"/><path d="M5 8v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8"/><line x1="5" y1="4" x2="19" y2="4"/></svg>'+
           'Fábrica'+
         '</button>'+
@@ -19006,13 +18601,11 @@ function addCompraItem(){
     '</div>'+
     '<div class="fld"><label>Data *</label><input type="date" id="ci-dt-'+id+'" value="'+todayISO()+'"/></div>'+
     '<div class="fld"><label>Fornecedor *</label><input type="text" id="ci-forn-'+id+'" placeholder="Nome do fornecedor"/></div>'+
-    '<div class="fld"><label>Tipo *</label><select id="ci-tipo-'+id+'" onchange="ciToggleIns('+id+')"><option value="">Selecione</option>'+tiposOptsHtml()+'</select></div>'+
-    insTipoHtml('ci','-'+id,id)+
+    '<div class="fld"><label>Tipo *</label><select id="ci-tipo-'+id+'"><option value="">Selecione</option>'+tiposOptsHtml()+'</select></div>'+
     '<div class="fld" style="margin-top:12px"><label>Descrição do Produto *</label><textarea id="ci-desc-'+id+'" rows="2" placeholder="Descreva o produto ou serviço..."></textarea></div>'+
-    insBlockHtml('ci','-'+id,id)+
     '<div class="fld-row2">'+
-      '<div class="fld"><label id="ci-lbl-qtd-'+id+'">Quantidade *</label><input type="number" id="ci-qtd-'+id+'" placeholder="0" min="0" step="0.001" oninput="calcItem('+id+')"/></div>'+
-      '<div class="fld"><label id="ci-lbl-vun-'+id+'">Valor R$/Unid *</label><input type="text" id="ci-vun-'+id+'" placeholder="0,00" oninput="fmtInput(this);calcItem('+id+')"/></div>'+
+      '<div class="fld"><label>Valor R$/Unid *</label><input type="text" id="ci-vun-'+id+'" placeholder="0,00" oninput="fmtInput(this);calcItem('+id+')"/></div>'+
+      '<div class="fld"><label>Quantidade *</label><input type="number" id="ci-qtd-'+id+'" placeholder="0" min="0" step="0.001" oninput="calcItem('+id+')"/></div>'+
     '</div>'+
     '<div class="fld" style="margin-top:12px"><label>Valor R$/Total</label><div class="val-display am" id="ci-tot-'+id+'">—</div></div>'+
     '<div class="fld"><label>Meio de Pagamento *</label><select id="ci-pag-'+id+'" onchange="toggleBoleto('+id+')"><option value="">Selecione</option>'+pagOptsHtml()+'</select></div>'+
@@ -19039,13 +18632,10 @@ function addCompraItem(){
   document.getElementById('compras-itens').insertAdjacentHTML('beforeend',html);
   refreshCiNums();
   calcTotalBar();
-  const wrap=document.getElementById('compra-form-wrap');
-  if(wrap)wrap.style.display='block';
 }
 
 function remCompraItem(id){
   cIds=cIds.filter(i=>i!==id);
-  delete FIN_LAUDOS[id];
   const el=document.getElementById('ci-'+id);
   if(el)el.remove();
   refreshCiNums();calcTotalBar();
@@ -19063,7 +18653,6 @@ function setSeg(id,s){
   const g=document.getElementById('seg-gas-'+id);
   if(s==='fab'){f.classList.add('on');g.classList.remove('on');}
   else{g.classList.add('on');f.classList.remove('on');}
-  ciToggleIns(id);
 }
 
 function setCiStatus(id,s){
@@ -19128,7 +18717,6 @@ function verAnexo(id){
 
 function validarCompra(){
   let ok=true;
-  finMsgErro='';
   cIds.forEach(function(id){
     const campos=[
       {field:'ci-forn-'+id,t:'text'},{field:'ci-tipo-'+id,t:'sel'},
@@ -19149,59 +18737,19 @@ function validarCompra(){
       else if(venc)venc.classList.remove('err');
     }
   });
-  // Campos do Cadastro de destino (Insumos/Limpeza/Equipamentos — só nas
-  // compras que geram entrada automática)
-  const vistos={};
-  cIds.forEach(function(id){
-    const cat=ciCategoriaAtiva(id);
-    if(!cat)return;
-    const t=document.getElementById('ci-instipo-'+id),c=document.getElementById('ci-inscod-'+id);
-    [t,c].forEach(function(el){
-      if(!(el.value||'').trim()){el.classList.add('err');ok=false;}
-      else el.classList.remove('err');
-    });
-    const cod=(c.value||'').trim();
-    if(!cod)return;
-    const desc=document.getElementById('ci-desc-'+id).value||'';
-    let msg='';
-    // A checagem de "código já usado por outro produto no Cadastro" só existe
-    // pra Insumo (é a regra de saldo por código que já existia). Limpeza e
-    // Equipamentos não têm essa restrição em seus próprios cadastros.
-    if(cat==='insumo'){
-      const conf=_r8DescricaoConflitanteInsumo(cod,desc,-1);
-      if(conf){
-        msg='O código "'+cod+'" já está cadastrado para "'+conf.descricao+'". Use um código diferente, ou corrija a descrição para que seja exatamente o mesmo produto (assim as entradas se somam corretamente no mesmo saldo).';
-      }
-    }
-    if(!msg){
-      const cn=cod.toLowerCase(),dn=desc.trim().toLowerCase();
-      if(vistos[cn]!==undefined&&vistos[cn]!==dn)msg='O código "'+cod+'" está sendo usado por produtos diferentes nesta mesma compra. Use um código diferente para cada produto.';
-      vistos[cn]=dn;
-    }
-    if(msg){c.classList.add('err');ok=false;if(!finMsgErro)finMsgErro=msg;}
-  });
   return ok;
 }
 
 function confirmarSalvarCompra(){
-  if(!validarCompra()){showToast(finMsgErro||'Preencha os campos obrigatórios (*)','err');return;}
+  if(!validarCompra()){showToast('Preencha os campos obrigatórios (*)','err');return;}
   let tot=0;
   cIds.forEach(function(id){
     const q=parseFloat(document.getElementById('ci-qtd-'+id).value||0);
     const v=parseBR(document.getElementById('ci-vun-'+id).value||'');
     tot=round2(tot+q*v);
   });
-  const nIns=cIds.filter(function(id){return ciCategoriaAtiva(id)==='insumo';}).length;
-  const nLimp=cIds.filter(function(id){return ciCategoriaAtiva(id)==='limpeza';}).length;
-  const nEquip=cIds.filter(function(id){return ciCategoriaAtiva(id)==='equipamento';}).length;
-  const partesEntrada=[];
-  if(nIns)partesEntrada.push(nIns+' de insumo (Cadastro + Estoque de Insumos)');
-  if(nLimp)partesEntrada.push(nLimp+' de limpeza/sanitização (Cadastro de Limpeza)');
-  if(nEquip)partesEntrada.push(nEquip+' de equipamento (Cadastro de Equipamentos — Patrimônio Fixo)');
   openModal('Confirmar Registro',
-    '<strong>'+cIds.length+' item(ns)</strong> serão registrados.<br>Total: <strong>'+fmtBRL(tot)+'</strong>'+
-    (partesEntrada.length?'<br><br><strong>Entrada automática:</strong> '+partesEntrada.join('; ')+'.':'')+
-    '<br><br>Deseja confirmar?',
+    '<strong>'+cIds.length+' item(ns)</strong> serão registrados.<br>Total: <strong>'+fmtBRL(tot)+'</strong><br><br>Deseja confirmar?',
     'Salvar','am',salvarCompra);
 }
 
@@ -19209,13 +18757,8 @@ function salvarCompra(){
   closeModal();
   const compras=getCompras();
   const grupoId=uid();
-  if(!dadosERP.insumos)dadosERP.insumos=[];
-  if(!dadosERP.movimentacoesEstoque)dadosERP.movimentacoesEstoque=[];
-  if(!dadosERP.produtosLimpeza)dadosERP.produtosLimpeza=[];
-  if(!dadosERP.equipamentos)dadosERP.equipamentos=[];
-  const bkI=dadosERP.insumos.slice(),bkM=dadosERP.movimentacoesEstoque.slice();
-  const bkL=dadosERP.produtosLimpeza.slice(),bkE=dadosERP.equipamentos.slice();
-  let nEntradas=0;
+  const itensParaEstoque=[]; // Compras do tipo "Insumos / Matéria-Prima" (Fábrica) — vão para a conferência de estoque
+  let primeiroFornecedorInsumo='';
   cIds.forEach(function(id){
     const q=parseFloat(document.getElementById('ci-qtd-'+id).value||0);
     const v=parseBR(document.getElementById('ci-vun-'+id).value||'');
@@ -19224,9 +18767,6 @@ function salvarCompra(){
     const tipoCompra=document.getElementById('ci-tipo-'+id).value||'';
     const descCompra=document.getElementById('ci-desc-'+id).value||'';
     const fornCompra=document.getElementById('ci-forn-'+id).value||'';
-    const cat=ciCategoriaAtiva(id);
-    const isIns=cat==='insumo'&&q>0;
-    const tipoIns=isIns?(document.getElementById('ci-instipo-'+id).value||''):'';
     const compraId=uid();
     compras.push({
       id:compraId,
@@ -19237,7 +18777,7 @@ function salvarCompra(){
       numeroNF:document.getElementById('ci-nf-'+id).value||'',
       cnpjFornecedor:document.getElementById('ci-cnpj-'+id).value||'',
       tipo:tipoCompra,
-      unidade:isIns?finUnidIns(tipoIns):(document.getElementById('ci-und-'+id).value||''),
+      unidade:document.getElementById('ci-und-'+id).value||'',
       descricao:descCompra,
       valorUn:v, quantidade:q, total:round2(q*v),
       pagamento:document.getElementById('ci-pag-'+id).value||'',
@@ -19246,64 +18786,28 @@ function salvarCompra(){
       anexo:pendingAnexo||null,
       criadoEm:new Date().toISOString()
     });
-    if(isIns){
-      // Mesmos campos do Cadastro de Insumos → entrada no Cadastro + Estoque
-      finLancarEntrada(finMontarEntrada(compraId,{
-        codigo:(document.getElementById('ci-inscod-'+id).value||'').trim(),
-        lote:document.getElementById('ci-inslote-'+id).value||'',
-        tipo:tipoIns,
-        descricao:descCompra,
-        produtor:document.getElementById('ci-insprod-'+id).value||'',
-        fornecedor:fornCompra,
-        qtd:q,valor:v,
-        validade:document.getElementById('ci-insval-'+id).value||'',
-        obs:document.getElementById('ci-insobs-'+id).value||'',
-        laudo:FIN_LAUDOS[id]||null
-      }));
-      nEntradas++;
-    } else if(cat==='limpeza'&&q>0){
-      finLancarEntradaLimpeza({
-        codigo:(document.getElementById('ci-inscod-'+id).value||'').trim(),
-        lote:document.getElementById('ci-inslote-'+id).value||'',
-        tipo:document.getElementById('ci-instipo-'+id).value||'',
-        descricao:descCompra,
-        fabricante:document.getElementById('ci-insprod-'+id).value||'',
-        qtd:q,valorUn:v,
-        validade:document.getElementById('ci-insval-'+id).value||'',
-        obs:document.getElementById('ci-insobs-'+id).value||'',
-        compraId:compraId
-      });
-      nEntradas++;
-    } else if(cat==='equipamento'&&q>0){
-      finLancarEntradaEquipamento({
-        codigo:(document.getElementById('ci-inscod-'+id).value||'').trim(),
-        tipo:document.getElementById('ci-instipo-'+id).value||'',
-        descricao:descCompra,
-        qtd:q,valorUn:v,
-        obs:document.getElementById('ci-insobs-'+id).value||'',
-        compraId:compraId
-      });
-      nEntradas++;
+    if(isFab && tipoCompra==='Insumos / Matéria-Prima' && q>0){
+      if(!primeiroFornecedorInsumo) primeiroFornecedorInsumo=fornCompra;
+      itensParaEstoque.push({descricao:descCompra, unidadeNFe:document.getElementById('ci-und-'+id).value||'', qtdNFe:q, valorUnitNFe:v, ncm:'', origemCompraId:compraId});
     }
   });
-  if(!setCompras(compras)){finRestaurarEstoque(bkI,bkM);dadosERP.produtosLimpeza=bkL;dadosERP.equipamentos=bkE;return;}
+  if(!setCompras(compras))return;
   cIds=[];cCount=0;
   pendingAnexo=null;
-  Object.keys(FIN_LAUDOS).forEach(function(k){delete FIN_LAUDOS[k];});
   document.getElementById('compras-itens').innerHTML='';
   document.getElementById('compra-total-bar').classList.remove('show');
   document.getElementById('cf-ok').style.display='none';
   addCompraItem();
-  showToast('Compra registrada com sucesso!'+(nEntradas?' Entrada lançada automaticamente no(s) cadastro(s) correspondente(s).':''),'ok');
+  showToast('Compra registrada com sucesso!','ok');
   renderHistCompras();
   renderDash();
-  if(nEntradas){
-    // 2026-09-22: faltava persistir no Firebase — a entrada em dadosERP.insumos
-    // ficava só na memória da sessão até alguma outra ação salvar por acaso.
-    try{ salvarDadosLocal(); }catch(e){}
-    finAtualizarTelasInsumos();
-    if(typeof atualizarListaLimpezaERP==='function')try{atualizarListaLimpezaERP();}catch(e){}
-    if(typeof atualizarListaEquipamentosERP==='function')try{atualizarListaEquipamentosERP();}catch(e){}
+  // Compra financeira de Insumos/Matéria-Prima (Fábrica) também precisa
+  // virar entrada no Cadastro/Estoque de Insumos — mesma tela de conferência
+  // item a item usada na importação de NF-e, nunca lançamento automático.
+  if(itensParaEstoque.length && window._r8RenderizarRevisaoNFe){
+    setTimeout(function(){
+      _r8RenderizarRevisaoNFe({nota:{fornecedorNome:primeiroFornecedorInsumo, numero:''}, itens:itensParaEstoque, origemLabel:'Compra Financeira (Fábrica)', tituloRevisao:'Conferir Itens da Compra (Insumos)'});
+    }, 300);
   }
 }
 
@@ -19327,9 +18831,15 @@ function renderHistCompras(){
         '<div class="lanc-val pagar">'+fmtBRL(c.total)+'</div>'+
         '<span class="lanc-status '+(c.statusPag==='pago'?'pago':'pend')+'">'+(c.statusPag==='pago'?'Pago':'Pendente')+'</span>'+
       '</div>'+
-      (c.anexo?'<button class="r8-btn-acao r8-btn-laudo" onclick="verAnexo(\''+c.id+'\')" title="Ver comprovante"><i class="fas fa-eye"></i></button>':'')+
-      '<button class="r8-btn-acao r8-btn-editar" onclick="editarCompra(\''+c.id+'\')" title="Editar"><i class="fas fa-pen"></i></button>'+
-      '<button class="r8-btn-acao r8-btn-excluir" onclick="excluirCompra(\''+c.id+'\')" title="Excluir"><i class="fas fa-trash"></i></button>'+
+      (c.anexo?'<button class="lanc-del-btn" onclick="verAnexo(\''+c.id+'\')" title="Ver comprovante" style="color:#86efac">'+
+        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>'+
+      '</button>':'')+
+      '<button class="lanc-del-btn" onclick="editarCompra(\''+c.id+'\')" title="Editar" style="color:#93c5fd">'+
+        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>'+
+      '</button>'+
+      '<button class="lanc-del-btn" onclick="excluirCompra(\''+c.id+'\')" title="Excluir">'+
+        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>'+
+      '</button>'+
     '</div>';
   }).join('');
 }
@@ -19341,7 +18851,7 @@ function editarCompra(id){
     '<div class="fld" style="margin-bottom:14px;">'+
       '<label>Seção *</label>'+
       '<div class="seg-toggle">'+
-        '<button type="button" class="seg-btn sec-fab'+(c.secao==='Fábrica'?' on':'')+'" id="ed-seg-fab" onclick="edSetSeg(\'fab\')">Fábrica</button>'+
+        '<button type="button" class="seg-btn fab'+(c.secao==='Fábrica'?' on':'')+'" id="ed-seg-fab" onclick="edSetSeg(\'fab\')">Fábrica</button>'+
         '<button type="button" class="seg-btn gas'+(c.secao==='Gastrobar'?' on':'')+'" id="ed-seg-gas" onclick="edSetSeg(\'gas\')">Gastrobar</button>'+
       '</div>'+
     '</div>'+
@@ -19352,15 +18862,13 @@ function editarCompra(id){
       '<div class="fld"><label>CNPJ Fornecedor</label><input type="text" id="ed-cnpj" value="'+(c.cnpjFornecedor||'')+'" oninput="fmtCNPJ(this)"/></div>'+
     '</div>'+
     '<div class="fld-row2" style="margin-top:12px">'+
-      '<div class="fld"><label>Tipo *</label><select id="ed-tipo" onchange="edToggleIns()"><option value="">Selecione</option>'+tiposOptsHtml()+'</select></div>'+
+      '<div class="fld"><label>Tipo *</label><select id="ed-tipo"><option value="">Selecione</option>'+tiposOptsHtml()+'</select></div>'+
       '<div class="fld"><label>Unidade</label><select id="ed-und">'+undOptsHtml()+'</select></div>'+
     '</div>'+
-    insTipoHtml('ed','',null)+
     '<div class="fld" style="margin-top:12px"><label>Descrição *</label><textarea id="ed-desc" rows="2">'+(c.descricao||'')+'</textarea></div>'+
-    insBlockHtml('ed','',null)+
     '<div class="fld-row2">'+
-      '<div class="fld"><label id="ed-lbl-qtd">Quantidade *</label><input type="number" id="ed-qtd" value="'+(c.quantidade||'')+'" min="0" step="0.001"/></div>'+
-      '<div class="fld"><label id="ed-lbl-vun">Valor R$/Unid *</label><input type="text" id="ed-vun" value="'+((c.valorUn||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}))+'" oninput="fmtInput(this)"/></div>'+
+      '<div class="fld"><label>Valor R$/Unid *</label><input type="text" id="ed-vun" value="'+((c.valorUn||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}))+'" oninput="fmtInput(this)"/></div>'+
+      '<div class="fld"><label>Quantidade *</label><input type="number" id="ed-qtd" value="'+(c.quantidade||'')+'" min="0" step="0.001"/></div>'+
     '</div>'+
     '<div class="fld" style="margin-top:12px"><label>Meio de Pagamento *</label><select id="ed-pag">'+pagOptsHtml()+'</select></div>'+
     '<div class="fld" style="margin-top:12px"><label>Status</label>'+
@@ -19374,18 +18882,6 @@ function editarCompra(id){
     document.getElementById('ed-tipo').value=c.tipo||'';
     document.getElementById('ed-und').value=c.unidade||'—';
     document.getElementById('ed-pag').value=c.pagamento||'';
-    const ent=(dadosERP.insumos||[]).find(i=>i.compraId===id);
-    if(ent){
-      document.getElementById('ed-instipo').value=ent.tipo||'';
-      const ic=document.getElementById('ed-inscod');
-      ic.value=ent.codigo||'';ic.readOnly=true;ic.style.background='#f5f5f4';
-      const ia=document.getElementById('ed-inscod-auto');if(ia)ia.style.display='none';
-      document.getElementById('ed-inslote').value=ent.lote||'';
-      document.getElementById('ed-insprod').value=ent.produtor||'';
-      document.getElementById('ed-insval').value=ent.validade||'';
-      document.getElementById('ed-insobs').value=ent.obs||'';
-    }
-    edToggleIns();
   },0);
 }
 let edSeg='Fábrica',edSt='pendente';
@@ -19393,36 +18889,11 @@ function edSetSeg(s){
   edSeg=s==='fab'?'Fábrica':'Gastrobar';
   document.getElementById('ed-seg-fab').classList.toggle('on',s==='fab');
   document.getElementById('ed-seg-gas').classList.toggle('on',s==='gas');
-  edToggleIns();
 }
 function edSetSt(s){
   edSt=s;
   document.getElementById('ed-st-pg').classList.toggle('on',s==='pago');
   document.getElementById('ed-st-pd').classList.toggle('on',s==='pendente');
-}
-function finEdInsAtivo(){
-  const f=document.getElementById('ed-seg-fab'),t=document.getElementById('ed-tipo');
-  return !!(f&&t&&f.classList.contains('on')&&t.value===FIN_TIPO_INS);
-}
-function edToggleIns(){
-  const ativo=finEdInsAtivo();
-  const w=document.getElementById('ed-ins-wrap');
-  if(w)w.style.display=ativo?'block':'none';
-  const wt=document.getElementById('ed-instipo-wrap');
-  if(wt)wt.style.display=ativo?'block':'none';
-  const tIns=(document.getElementById('ed-instipo')||{}).value||'';
-  const u=(ativo&&tIns)?finUnidIns(tIns):'';
-  const lq=document.getElementById('ed-lbl-qtd'),lv=document.getElementById('ed-lbl-vun');
-  if(lq)lq.textContent=u?'Quantidade ('+u+') *':'Quantidade *';
-  if(lv)lv.textContent=u?'Valor R$/'+u+' *':'Valor R$/Unid *';
-  if(u){const und=document.getElementById('ed-und');if(und)und.value=u;}
-}
-function edGerarCodIns(){
-  const desc=document.getElementById('ed-desc').value||'';
-  if(!desc.trim()){showToast('Preencha a Descrição antes de gerar o código.','err');return;}
-  const el=document.getElementById('ed-inscod');
-  el.value=finSugerirCodigo(desc,[]);
-  el.classList.remove('err');
 }
 function salvarEdicaoCompra(id){
   const compras=getCompras();
@@ -19433,87 +18904,23 @@ function salvarEdicaoCompra(id){
   edSt=document.getElementById('ed-st-pg').classList.contains('on')?'pago':'pendente';
   const q=parseFloat(document.getElementById('ed-qtd').value||0);
   const v=parseBR(document.getElementById('ed-vun').value||'');
-  const tipoNovo=document.getElementById('ed-tipo').value||'';
-  const descNova=document.getElementById('ed-desc').value||'';
-  const fornNovo=document.getElementById('ed-forn').value||'';
-  const ehIns=edSeg==='Fábrica'&&tipoNovo===FIN_TIPO_INS;
-  if(!dadosERP.insumos)dadosERP.insumos=[];
-  if(!dadosERP.movimentacoesEstoque)dadosERP.movimentacoesEstoque=[];
-  const idxEnt=dadosERP.insumos.findIndex(i=>i.compraId===id);
-  const entrada=idxEnt>=0?dadosERP.insumos[idxEnt]:null;
-  let unidNova=document.getElementById('ed-und').value||'';
-  let tipoIns='',cod='';
-
-  // 1) Validações (nada é alterado enquanto houver erro)
-  if(ehIns){
-    tipoIns=(document.getElementById('ed-instipo').value||'').trim();
-    cod=entrada?entrada.codigo:(document.getElementById('ed-inscod').value||'').trim();
-    if(!tipoIns||!cod){
-      ['ed-instipo','ed-inscod'].forEach(function(k){const el=document.getElementById(k);if(el&&!(el.value||'').trim())el.classList.add('err');});
-      showToast('Preencha o Tipo do Insumo e o Código (*)','err');return;
-    }
-    if(!(q>0)){showToast('Informe uma quantidade maior que zero para dar entrada no estoque.','err');return;}
-    const conf=_r8DescricaoConflitanteInsumo(cod,descNova,idxEnt>=0?idxEnt:-1);
-    if(conf){
-      showToast('O código "'+cod+'" já está cadastrado para "'+conf.descricao+'". Use um código diferente, ou corrija a descrição para que seja exatamente o mesmo produto.','err');return;
-    }
-    unidNova=finUnidIns(tipoIns);
-  }
-  if(entrada){
-    const msg=finSaldoInsuficiente(entrada,ehIns?q:0);
-    if(msg){showToast(msg,'err');return;}
-  }
-
-  // 2) Estoque acompanha a compra (uma única gravação no final)
-  const bkI=dadosERP.insumos.slice(),bkM=dadosERP.movimentacoesEstoque.slice();
-  let mexeuEstoque=false;
-  if(ehIns&&entrada){
-    const novo=Object.assign({},entrada,{
-      tipo:tipoIns,descricao:descNova,fornecedor:fornNovo,qtd:q,valor:v,unidade:unidNova,valorTotal:q*v,
-      lote:document.getElementById('ed-inslote').value||'',
-      produtor:document.getElementById('ed-insprod').value||'',
-      validade:document.getElementById('ed-insval').value||'',
-      obs:document.getElementById('ed-insobs').value||''
-    });
-    dadosERP.insumos[idxEnt]=novo;
-    const im=dadosERP.movimentacoesEstoque.findIndex(m=>m.compraId===id&&m.tipo==='entrada');
-    if(im>=0){
-      const m=dadosERP.movimentacoesEstoque[im];
-      dadosERP.movimentacoesEstoque[im]=Object.assign({},m,{
-        descricao:descNova,tipoInsumo:tipoIns,quantidade:q,unidade:unidNova,lote:novo.lote,saldoAtual:(m.saldoAnterior||0)+q
-      });
-    }
-    mexeuEstoque=true;
-  } else if(ehIns&&!entrada){
-    finLancarEntrada(finMontarEntrada(id,{
-      codigo:cod,lote:document.getElementById('ed-inslote').value||'',tipo:tipoIns,descricao:descNova,
-      produtor:document.getElementById('ed-insprod').value||'',fornecedor:fornNovo,qtd:q,valor:v,
-      validade:document.getElementById('ed-insval').value||'',obs:document.getElementById('ed-insobs').value||'',laudo:null
-    }));
-    mexeuEstoque=true;
-  } else if(!ehIns&&entrada){
-    finRemoverEstoqueDaCompra(id);
-    mexeuEstoque=true;
-  }
-
   compras[idx]=Object.assign({},orig,{
     secao:edSeg,
     data:document.getElementById('ed-dt').value||orig.data,
-    fornecedor:fornNovo,
+    fornecedor:document.getElementById('ed-forn').value||'',
     numeroNF:document.getElementById('ed-nf').value||'',
     cnpjFornecedor:document.getElementById('ed-cnpj').value||'',
-    tipo:tipoNovo,
-    unidade:ehIns?unidNova:(document.getElementById('ed-und').value||''),
-    descricao:descNova,
+    tipo:document.getElementById('ed-tipo').value||'',
+    unidade:document.getElementById('ed-und').value||'',
+    descricao:document.getElementById('ed-desc').value||'',
     valorUn:v,quantidade:q,total:round2(q*v),
     pagamento:document.getElementById('ed-pag').value||'',
     statusPag:edSt
   });
-  if(!setCompras(compras)){finRestaurarEstoque(bkI,bkM);return;}
+  if(!setCompras(compras))return;
   closeModal();
   renderHistCompras();renderDash();
-  if(mexeuEstoque)finAtualizarTelasInsumos();
-  showToast(mexeuEstoque?'Compra atualizada e estoque sincronizado!':'Compra atualizada!','ok');
+  showToast('Compra atualizada!','ok');
 }
 
 function exportarCSVCompras(){
@@ -19565,22 +18972,32 @@ function gerarRelatorioPDFCompras(){
 }
 
 function excluirCompra(id){
-  const temEstoque=(dadosERP.insumos||[]).some(i=>i.compraId===id);
-  openModal('Excluir Registro','Deseja remover este lançamento de compra?'+(temEstoque?'<br><br>A entrada correspondente será <strong>removida também do Cadastro de Insumos e do Estoque de Insumos</strong>.':'')+' Esta ação não pode ser desfeita.','Excluir','danger',function(){
+  // Compras do tipo "Insumos / Matéria-Prima" geram entradas no Cadastro de
+  // Insumos (via origemCompraId). Sem isso, excluir a compra deixava a
+  // entrada de estoque órfã, sem nenhuma ligação de volta ao financeiro —
+  // dados desencontrados entre os dois módulos. Agora localizamos e
+  // avisamos ANTES de excluir, mostrando exatamente o que vai junto.
+  var insumosLigados = (dadosERP.insumos || []).filter(function(i) { return i.origemCompraId === id; });
+  var msg = 'Deseja remover este lançamento de compra? Esta ação não pode ser desfeita.';
+  if (insumosLigados.length) {
+    var lista = insumosLigados.map(function(i) {
+      return '• ' + (i.descricao || i.codigo) + ' — ' + (i.qtd || 0).toFixed(2) + ' ' + (i.unidade || '');
+    }).join('<br>');
+    msg += '<br><br><strong style="color:#991b1b">Esta compra também gerou ' + insumosLigados.length + ' entrada(s) no Cadastro de Insumos, que serão excluídas junto:</strong><br>' + lista
+      + '<br><br><span style="font-size:12px;color:#7a6a5a">Se parte desse material já foi usada em alguma Ficha Técnica, o saldo do insumo pode ficar negativo depois da exclusão — isso é esperado, e mostra que a compra excluída já tinha sido usada em produção.</span>';
+  }
+  openModal('Excluir Registro', msg, 'Excluir', 'danger', function(){
     closeModal();
-    const entradas=(dadosERP.insumos||[]).filter(i=>i.compraId===id);
-    for(let k=0;k<entradas.length;k++){
-      const msg=finSaldoInsuficiente(entradas[k],0);
-      if(msg){showToast(msg,'err');return;}
+    setCompras(getCompras().filter(c=>c.id!==id));
+    if (insumosLigados.length) {
+      dadosERP.insumos = dadosERP.insumos.filter(function(i) { return i.origemCompraId !== id; });
+      salvarDadosFirebase();
+      if (typeof atualizarListaInsumosERP === 'function') atualizarListaInsumosERP();
+      if (typeof atualizarTabelaEstoqueAgrupada === 'function') atualizarTabelaEstoqueAgrupada();
+      if (typeof _renderizarAlertasEstoque === 'function') setTimeout(_renderizarAlertasEstoque, 200);
     }
-    if(!dadosERP.insumos)dadosERP.insumos=[];
-    if(!dadosERP.movimentacoesEstoque)dadosERP.movimentacoesEstoque=[];
-    const bkI=dadosERP.insumos.slice(),bkM=dadosERP.movimentacoesEstoque.slice();
-    finRemoverEstoqueDaCompra(id);
-    if(!setCompras(getCompras().filter(c=>c.id!==id))){finRestaurarEstoque(bkI,bkM);return;}
     renderHistCompras();renderDash();
-    if(entradas.length)finAtualizarTelasInsumos();
-    showToast(entradas.length?'Registro excluído e estoque estornado.':'Registro excluído.','warn');
+    showToast('Registro excluído.','warn');
   });
 }
 
@@ -19950,14 +19367,8 @@ function initVendas(){
   document.getElementById('vd-desc').value='';
   document.getElementById('vd-tipo').value='';
   document.getElementById('vd-pag').value='';
-  const wrap=document.getElementById('vd-form-wrap');
-  if(wrap)wrap.style.display='none';
   renderAcumVendas();
   renderHistVendas();
-}
-function abrirNovaVenda(){
-  const wrap=document.getElementById('vd-form-wrap');
-  if(wrap)wrap.style.display='block';
 }
 
 function renderAcumVendas(){
@@ -20017,8 +19428,12 @@ function renderHistVendas(){
         '<div class="lanc-val receber">'+fmtBRL(v.valor)+'</div>'+
         '<span class="lanc-status '+(v.status==='recebido'?'pago':'pend')+'">'+(v.status==='recebido'?'Recebido':'A Receber')+'</span>'+
       '</div>'+
-      (v.origemId?'':'<button class="r8-btn-acao r8-btn-editar" onclick="editarVenda(\''+v.id+'\')" title="Editar"><i class="fas fa-pen"></i></button>')+
-      (v.origemId?'':'<button class="r8-btn-acao r8-btn-excluir" onclick="excluirVenda(\''+v.id+'\')" title="Excluir"><i class="fas fa-trash"></i></button>')+
+      '<button class="lanc-del-btn" onclick="editarVenda(\''+v.id+'\')" title="Editar" style="color:#93c5fd">'+
+        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>'+
+      '</button>'+
+      '<button class="lanc-del-btn" onclick="excluirVenda(\''+v.id+'\')" title="Excluir">'+
+        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>'+
+      '</button>'+
     '</div>';
   }).join('');
 }
@@ -20168,12 +19583,12 @@ function renderContas(){
   const busca=(document.getElementById('busca-contas').value||'').toLowerCase();
 
   const pagar=cM.map(c=>({
-    data:c.data,nome:'Compras - '+(c.fornecedor||'Compra'),
+    data:c.data,nome:c.fornecedor||'Compra',
     sub:(c.secao||'')+(c.tipo?' · '+c.tipo:'')+(c.pagamento?' · '+c.pagamento:''),
     valor:c.total||0,tipo:'pagar',status:c.statusPag||'pendente',pagamento:c.pagamento,id:c.id
   }));
   const receber=vM.map(v=>({
-    data:v.data,nome:'Vendas - '+(v.descricao||v.tipo||'Venda'),
+    data:v.data,nome:v.descricao||v.tipo||'Venda',
     sub:(v.tipo||'')+(v.pagamento?' · '+v.pagamento:''),
     valor:v.valor||0,tipo:'receber',status:v.status==='recebido'?'pago':'pendente',id:v.id
   }));
