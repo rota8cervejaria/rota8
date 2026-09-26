@@ -26,7 +26,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-09-20-3';
+    window.R8_BUILD = '2026-09-20-4';
     (function() {
         var buildVisto = null;
         try { buildVisto = localStorage.getItem('r8_build_visto'); } catch(e){}
@@ -9161,7 +9161,7 @@ window.excluirFichaERP=function(i){
     var partes = [];
     if (temPA) partes.push('estoque de produto acabado (Câmara Fria/PDV/TAP)');
     if (qtdMovs) partes.push(qtdMovs+' movimentação(ões) de estoque');
-    if (qtdVendasPDV || qtdVendasTaps) partes.push((qtdVendasPDV+qtdVendasTaps)+' venda(s) registrada(s)');
+    if (qtdVendasPDV || qtdVendasTaps) partes.push((qtdVendasPDV+qtdVendasTaps)+' venda(s) registrada(s) (e o(s) lançamento(s) correspondente(s) no Financeiro - Vendas)');
     if (qtdBarris) partes.push(qtdBarris+' barril(is) vinculado(s) (ficarão disponíveis de novo)');
 
     var msg = 'Isso vai apagar PERMANENTEMENTE, em TODO o sistema, tudo relacionado ao lote "'+lote+'": '
@@ -9180,9 +9180,15 @@ window.excluirFichaERP=function(i){
         // 2) Remove o produto acabado gerado por esta ficha (Câmara Fria/PDV/TAP)
         dadosERP.produtosAcabados = (dadosERP.produtosAcabados||[]).filter(function(p){ return p.lote !== lote; });
 
-        // 3) Remove vendas (PDV e TAP) deste lote
+        // 3) Remove vendas (PDV e TAP) deste lote — e os lançamentos do
+        //    Financeiro - Vendas gerados automaticamente a partir delas
+        var idsVendasDoLote = (dadosERP.vendasPDV||[]).filter(function(v){ return v.lote === lote; }).map(function(v){ return v.id; })
+            .concat((dadosERP.vendasTaps||[]).filter(function(v){ return v.lote === lote; }).map(function(v){ return v.id; }));
         dadosERP.vendasPDV  = (dadosERP.vendasPDV||[]).filter(function(v){ return v.lote !== lote; });
         dadosERP.vendasTaps = (dadosERP.vendasTaps||[]).filter(function(v){ return v.lote !== lote; });
+        if (dadosERP.financeiro && dadosERP.financeiro.r8v && idsVendasDoLote.length) {
+            dadosERP.financeiro.r8v = dadosERP.financeiro.r8v.filter(function(f){ return idsVendasDoLote.indexOf(f.origemVendaId) === -1; });
+        }
 
         // 4) Remove envases, pasteurizações e análises sensoriais deste lote
         dadosERP.envases           = (dadosERP.envases||[]).filter(function(e){ return e.lote !== lote; });
@@ -11257,6 +11263,25 @@ function darBaixaEstoque(loteChave, qtd, tipo, destino) {
     return true;
 }
 
+// Antes, "Estoque - Produto Acabado - Vendas" (vendasPDV/vendasTaps) e
+// "Financeiro - Vendas" (dadosERP.financeiro.r8v) eram dois registros
+// completamente independentes: um automático (aqui), o outro só por
+// digitação manual em outra tela — sem nenhum vínculo entre os dois. Isso
+// gerava divergência: excluir a venda aqui não refletia lá, e vice-versa.
+// Agora toda venda registrada aqui já cria o lançamento financeiro
+// correspondente sozinha, marcado com origemVendaId — o elo que permite
+// excluir os dois juntos depois, dos dois lados.
+function _r8CriarVendaFinanceiraAutomatica(origemVendaId, data, valor, pagamento, descricao) {
+    if (!dadosERP.financeiro) dadosERP.financeiro = {};
+    if (!dadosERP.financeiro.r8v) dadosERP.financeiro.r8v = [];
+    dadosERP.financeiro.r8v.push({
+        id: uid(), data: data, valor: round2(valor || 0),
+        tipo: 'Balcão / Presencial', descricao: descricao || '',
+        pagamento: pagamento || '', status: 'recebido',
+        criadoEm: new Date().toISOString(), origemVendaId: origemVendaId
+    });
+}
+
 function salvarVendaPDV(){
     let loteChave=document.getElementById('vendaLotePDV')?.value;
     let data=document.getElementById('vendaDataPDV')?.value;
@@ -11271,7 +11296,9 @@ function salvarVendaPDV(){
     if(!prod){R8.toast.erro('Lote/embalagem não encontrado.');return;}
     if(!darBaixaEstoque(loteChave,qtd,'PDV',destino))return;
     if(!dadosERP.vendasPDV)dadosERP.vendasPDV=[];
-    dadosERP.vendasPDV.push({id:'V'+Date.now()+Math.random().toString(36).slice(2,7),tipo:'PDV',lote,tipoEmbalagem:prod.tipoEmbalagem||'',embalagemCodigo:prod.embalagemCodigo||'',embalagemDescricao:prod.embalagemDescricao||'',data,destino,estilo:prod.estilo,quantidade:qtd,precoPorLitro:preco,valorTotal:(qtd*preco),pagamento,observacoes:obs});
+    var novaVendaId='V'+Date.now()+Math.random().toString(36).slice(2,7);
+    dadosERP.vendasPDV.push({id:novaVendaId,tipo:'PDV',lote,tipoEmbalagem:prod.tipoEmbalagem||'',embalagemCodigo:prod.embalagemCodigo||'',embalagemDescricao:prod.embalagemDescricao||'',data,destino,estilo:prod.estilo,quantidade:qtd,precoPorLitro:preco,valorTotal:(qtd*preco),pagamento,observacoes:obs});
+    _r8CriarVendaFinanceiraAutomatica(novaVendaId,data,qtd*preco,pagamento,'Venda PDV — Lote '+lote+(destino?' — '+destino:''));
     salvarDadosLocal();
     document.getElementById('vendaLotePDV').value='';document.getElementById('vendaEstiloPDV').value='';document.getElementById('vendaDataPDV').value=obterData();document.getElementById('vendaNomePDV').value='';document.getElementById('vendaQtdePDV').value='';document.getElementById('vendaObsPDV').value='';var pEl=document.getElementById('vendaPrecoPDV');if(pEl)pEl.value='';var tEl=document.getElementById('vendaTotalPDV');if(tEl){tEl.value='';tEl.style.background='#f0fdf4';}var pgEl=document.getElementById('vendaPagamentoPDV');if(pgEl)pgEl.value='';
     R8.toast.ok('Venda PDV registrada — Lote: '+lote+' | '+qtd+'L');
@@ -11294,7 +11321,9 @@ function salvarVendaTAP(){
     if(!prod){R8.toast.erro('Lote/embalagem não encontrado.');return;}
     if(!darBaixaEstoque(loteChave,qtd,'TAP','TAPs Brewpub'))return;
     if(!dadosERP.vendasTaps)dadosERP.vendasTaps=[];
-    dadosERP.vendasTaps.push({id:'V'+Date.now()+Math.random().toString(36).slice(2,7),tipo:'TAP',lote,tipoEmbalagem:prod.tipoEmbalagem||'',embalagemCodigo:prod.embalagemCodigo||'',embalagemDescricao:prod.embalagemDescricao||'',data,estilo:prod.estilo,quantidade:qtd,precoPorLitro:preco,valorTotal:(qtd*preco),pagamento,observacoes:obs,saldoCamaraFriaApos:prod.camaraFria});
+    var novaVendaId='V'+Date.now()+Math.random().toString(36).slice(2,7);
+    dadosERP.vendasTaps.push({id:novaVendaId,tipo:'TAP',lote,tipoEmbalagem:prod.tipoEmbalagem||'',embalagemCodigo:prod.embalagemCodigo||'',embalagemDescricao:prod.embalagemDescricao||'',data,estilo:prod.estilo,quantidade:qtd,precoPorLitro:preco,valorTotal:(qtd*preco),pagamento,observacoes:obs,saldoCamaraFriaApos:prod.camaraFria});
+    _r8CriarVendaFinanceiraAutomatica(novaVendaId,data,qtd*preco,pagamento,'Venda TAP — Lote '+lote);
     salvarDadosLocal();
     document.getElementById('vendaLoteTAP').value='';document.getElementById('vendaEstiloTAP').value='';document.getElementById('vendaDataTAP').value=obterData();document.getElementById('vendaQtdeTAP').value='';document.getElementById('vendaObsTAP').value='';var pEl=document.getElementById('vendaPrecoTAP');if(pEl)pEl.value='';var tEl=document.getElementById('vendaTotalTAP');if(tEl){tEl.value='';tEl.style.background='#f0fdf4';}var pgEl=document.getElementById('vendaPagamentoTAP');if(pgEl)pgEl.value='';
     R8.toast.ok('Venda TAP registrada — Lote: '+lote+' | '+qtd+'L');
@@ -11374,6 +11403,8 @@ window.removerVendaPDV=function(i){confirmarAcao({titulo:'Remover venda PDV',msg
         }
     }
     dadosERP.vendasPDV.splice(i,1);
+    if (v) dadosERP.financeiro = dadosERP.financeiro || {};
+    if (v && dadosERP.financeiro.r8v) dadosERP.financeiro.r8v = dadosERP.financeiro.r8v.filter(function(f){ return f.origemVendaId !== v.id; });
     salvarDadosLocal();
     aplicarFiltrosVendasPDV();
     if (typeof atualizarTabelaProdutoAcabado === 'function') atualizarTabelaProdutoAcabado();
@@ -11447,6 +11478,8 @@ window.removerVendaTAP=function(i){confirmarAcao({titulo:'Remover transferência
         }
     }
     dadosERP.vendasTaps.splice(i,1);
+    if (v) dadosERP.financeiro = dadosERP.financeiro || {};
+    if (v && dadosERP.financeiro.r8v) dadosERP.financeiro.r8v = dadosERP.financeiro.r8v.filter(function(f){ return f.origemVendaId !== v.id; });
     salvarDadosLocal();
     aplicarFiltrosVendasTAP();
     if (typeof atualizarTabelaProdutoAcabado === 'function') atualizarTabelaProdutoAcabado();
@@ -19542,9 +19575,44 @@ function salvarEdicaoVenda(id){
 }
 
 function excluirVenda(id){
-  openModal('Excluir Venda','Deseja remover este lançamento de venda?','Excluir','danger',function(){
+  var v = getVendas().find(function(x){ return x.id === id; });
+  var vendaPDV = v && v.origemVendaId ? (dadosERP.vendasPDV||[]).find(function(x){ return x.id === v.origemVendaId; }) : null;
+  var vendaTap = v && v.origemVendaId ? (dadosERP.vendasTaps||[]).find(function(x){ return x.id === v.origemVendaId; }) : null;
+  var msg = 'Deseja remover este lançamento de venda?';
+  if (vendaPDV || vendaTap) {
+    var origem = vendaPDV || vendaTap;
+    msg += '<br><br><strong style="color:#991b1b">Esta venda veio do Estoque (Lote ' + (origem.lote || '—') + ', ' + (origem.quantidade || 0) + 'L) — o registro de lá também será excluído, e o estoque de produto acabado será estornado.</strong>';
+  }
+  openModal('Excluir Venda', msg, 'Excluir', 'danger', function(){
     closeModal();
     setVendas(getVendas().filter(v=>v.id!==id));
+    if (vendaPDV) {
+        var prod = (dadosERP.produtosAcabados||[]).find(function(p){ return p.lote === vendaPDV.lote && (!vendaPDV.tipoEmbalagem || (p.tipoEmbalagem||'') === vendaPDV.tipoEmbalagem); });
+        if (prod) {
+            var saldoAntes = prod.camaraFria || 0;
+            prod.pdv = Math.max(0, (prod.pdv||0) - (vendaPDV.quantidade||0));
+            prod.camaraFria = parseFloat((saldoAntes + (vendaPDV.quantidade||0)).toFixed(2));
+            prod.status = prod.camaraFria === 0 ? 'Esgotado' : (prod.camaraFria < 10 ? 'Baixo' : 'Disponível');
+            if (!dadosERP.movimentacoesEstoque) dadosERP.movimentacoesEstoque = [];
+            dadosERP.movimentacoesEstoque.push({ id: Date.now()+'_estorno_pdv', data: obterDataHora(), tipo:'entrada', produto: prod.estilo, quantidade: vendaPDV.quantidade||0, lote: vendaPDV.lote, origem: 'PDV (estorno por remoção de venda no Financeiro)', saldoAnterior: saldoAntes, saldoAtual: prod.camaraFria });
+        }
+        dadosERP.vendasPDV = dadosERP.vendasPDV.filter(function(x){ return x.id !== vendaPDV.id; });
+        if (typeof aplicarFiltrosVendasPDV === 'function') aplicarFiltrosVendasPDV();
+    }
+    if (vendaTap) {
+        var prodT = (dadosERP.produtosAcabados||[]).find(function(p){ return p.lote === vendaTap.lote && (!vendaTap.tipoEmbalagem || (p.tipoEmbalagem||'') === vendaTap.tipoEmbalagem); });
+        if (prodT) {
+            var saldoAntesT = prodT.camaraFria || 0;
+            prodT.taps = Math.max(0, (prodT.taps||0) - (vendaTap.quantidade||0));
+            prodT.camaraFria = parseFloat((saldoAntesT + (vendaTap.quantidade||0)).toFixed(2));
+            prodT.status = prodT.camaraFria === 0 ? 'Esgotado' : (prodT.camaraFria < 10 ? 'Baixo' : 'Disponível');
+            if (!dadosERP.movimentacoesEstoque) dadosERP.movimentacoesEstoque = [];
+            dadosERP.movimentacoesEstoque.push({ id: Date.now()+'_estorno_tap', data: obterDataHora(), tipo:'entrada', produto: prodT.estilo, quantidade: vendaTap.quantidade||0, lote: vendaTap.lote, origem: 'TAP (estorno por remoção de transferência no Financeiro)', saldoAnterior: saldoAntesT, saldoAtual: prodT.camaraFria });
+        }
+        dadosERP.vendasTaps = dadosERP.vendasTaps.filter(function(x){ return x.id !== vendaTap.id; });
+        if (typeof aplicarFiltrosVendasTAP === 'function') aplicarFiltrosVendasTAP();
+    }
+    if (vendaPDV || vendaTap) { salvarDadosLocal(); if (typeof atualizarTabelaProdutoAcabado === 'function') atualizarTabelaProdutoAcabado(); }
     renderHistVendas();renderAcumVendas();renderDash();
     showToast('Venda excluída.','warn');
   });
