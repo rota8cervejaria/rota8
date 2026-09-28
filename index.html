@@ -26,7 +26,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-09-19-1';
+    window.R8_BUILD = '2026-09-27-1';
     (function() {
         var buildVisto = null;
         try { buildVisto = localStorage.getItem('r8_build_visto'); } catch(e){}
@@ -3881,7 +3881,9 @@ function _r8SaidaProducaoInsumo(codigo) {
     var liquido = 0;
     (dadosERP.movimentacoesEstoque||[]).forEach(function(m){
         if (m.codigo !== codigo) return;
-        if (!m.origem || m.origem.indexOf('Ficha Técnica') !== 0) return; // só baixas/estornos da Produção
+        // Só baixas/estornos da Produção (Ficha Técnica) ou de Descarte
+        // (baixa manual por vencimento/dano) contam no saldo.
+        if (!m.origem || (m.origem.indexOf('Ficha Técnica') !== 0 && m.origem.indexOf('Descarte') !== 0)) return;
         if (m.tipo === 'saida') liquido += (m.quantidade||0);
         else if (m.tipo === 'entrada') liquido -= (m.quantidade||0); // estorno reduz a saída líquida
     });
@@ -9530,7 +9532,7 @@ function atualizarProdutosRastreio(){
     var specs=[];
     c.innerHTML=lista.map(function(f,i){
         var thumbId='thumbProd_'+i;
-        specs.push({id:thumbId,url:'https://rota8cervejaria.github.io/rota8?lote='+encodeURIComponent(f.lote)+'&foco=destino'});
+        specs.push({id:thumbId,url:'https://rota8cervejaria.github.io/rota8?lote='+encodeURIComponent(f.lote)});
         return '<div class="rastreio-card">'
             + '<div class="rastreio-qr-thumb" id="'+thumbId+'" title="Ampliar QR Code" onclick="gerarQRProduto(\'' + R8.esc(f.lote) + '\')"><i class="fas fa-spinner fa-spin"></i></div>'
             + '<div class="rc-info">'
@@ -9551,7 +9553,7 @@ window.gerarQRProduto=function(lote){
     // Marcador &foco=destino: mesma ficha da Ficha Técnica, mas ao abrir
     // pula direto pra seção "Destino do Lote" (Câmara Fria/PDV/TAP) — é o
     // que importa pra quem escaneia o QR de um Produto Acabado específico.
-    var url='https://rota8cervejaria.github.io/rota8?lote='+encodeURIComponent(lote)+'&foco=destino';
+    var url='https://rota8cervejaria.github.io/rota8?lote='+encodeURIComponent(lote);
     var c=document.getElementById('qrcodeContainer');
     c.innerHTML='<p style="font-size:12px;margin-bottom:8px;font-weight:bold">Lote: '+lote+'</p>'
         +'<div id="_qrProdutoImg" style="min-height:60px;display:flex;align-items:center;justify-content:center"><i class="fas fa-spinner fa-spin" style="color:#94a3b8"></i></div>'
@@ -10767,11 +10769,12 @@ function _pubHeaderBarril(subtitulo) {
 
 // Bloco de identificação (fundo claro) com Código, Lote, Estilo,
 // Data de Envase e Data de Produção da embalagem lida no QR.
-function _pubInfoBarril(codigoTxt, loteTxt, estiloTxt, dataEnvaseTxt, dataProducaoTxt) {
+function _pubInfoBarril(codigoTxt, loteTxt, estiloTxt, dataEnvaseTxt, dataProducaoTxt, tanqueTxt) {
     return '<div class="pub-info-strip">'
         +   '<div class="pub-info-row"><span class="pub-info-label">Código</span><span class="pub-info-valor">' + R8.esc(codigoTxt || '—') + '</span></div>'
         +   '<div class="pub-info-row"><span class="pub-info-label">Lote</span><span class="pub-info-valor">' + R8.esc(loteTxt || '—') + '</span></div>'
         +   '<div class="pub-info-row"><span class="pub-info-label">Estilo</span><span class="pub-info-valor">' + R8.esc(estiloTxt || '—') + '</span></div>'
+        +   (tanqueTxt ? '<div class="pub-info-row"><span class="pub-info-label">Produzido no Tanque</span><span class="pub-info-valor">' + R8.esc(tanqueTxt) + '</span></div>' : '')
         +   '<div class="pub-info-row"><span class="pub-info-label">Data de Envase</span><span class="pub-info-valor">' + R8.esc(dataEnvaseTxt || '—') + '</span></div>'
         +   '<div class="pub-info-row"><span class="pub-info-label">Data de Produção</span><span class="pub-info-valor">' + R8.esc(dataProducaoTxt || '—') + '</span></div>'
         + '</div>';
@@ -10815,6 +10818,18 @@ function _pubCardHistoricoMovimentacoes(movs) {
 
 // Card 3 — SANITIZAÇÃO: status atual (Sanitizado, com data, ou
 // Aguardando Retorno enquanto a embalagem não volta para a cervejaria).
+// Card extra — link direto para a Ficha Técnica completa do lote (mesma
+// tela pública já usada pelo QR do tanque/lote), com a lista de insumos
+// usados na produção. Evita duplicar aqui a tabela de insumos: o QR do
+// lote já é a fonte dessa informação.
+function _pubCardFichaTecnicaBarril(lote) {
+    if (!lote) return '';
+    return '<div class="pub-card pub-card-block">'
+        +   '<div class="pub-card-title"><i class="fas fa-flask"></i> Ficha Técnica do Lote</div>'
+        +   '<a href="?lote=' + encodeURIComponent(lote) + '" onclick="event.preventDefault();window.mostrarLotePub(\'' + String(lote).replace(/'/g,"\\'") + '\');" class="pub-link-acesso"><i class="fas fa-arrow-up-right-from-square"></i> Ver ficha completa (insumos, mosturação, fermentação)</a>'
+        + '</div>';
+}
+
 function _pubCardSanitizacao(info, labelAguardando) {
     var aguardandoRetorno = info && info.statusTxt && info.statusTxt.indexOf('Aguardando Retorno') !== -1;
     var corpo;
@@ -10930,7 +10945,11 @@ function _pubCardFichaTanque(ficha) {
             +     '<span><strong>Etapa:</strong> ' + R8.esc(ETAPAS[ficha.statusLote] || ficha.statusLote || '—') + '</span>'
             +   '</div>'
             +   '<a href="#" onclick="event.preventDefault();window._pubAbrirPDFFichaTanque();" class="pub-link-acesso-tanque"><i class="fas fa-file-pdf"></i> Ver Ficha Técnica de Produção</a>'
-            + '</div>';
+            + '</div>'
+            // Barris sendo envasados a partir deste lote/tanque — reaproveita
+            // o mesmo bloco já usado no QR de "Localização do Lote" (Produto
+            // Acabado), sem duplicar a lógica de cálculo de destino por barril.
+            + (typeof window._r8MontarLocalizacaoLote === 'function' ? window._r8MontarLocalizacaoLote(ficha) : '');
     } else {
         corpo = '<p class="pub-sem-barril">Nenhuma produção em andamento neste tanque no momento.</p>';
     }
@@ -11170,6 +11189,39 @@ window.mostrarDestinoEquipamentoPub = function(codigo) {
     } catch(e) { _render([], [], [], 'catch externo: '+(e&&e.message||e)); }
 };
 
+// Conteúdo (sem wrapper) das Movimentações de Estoque do lote — Entrada
+// (Envase), Saída (Vendas PDV/TAP) e Saldo atual — lido direto do livro de
+// Movimentações já usado internamente no ERP (dadosERP.movimentacoesEstoque),
+// filtrado por este lote (m.lote === lote && m.produto identifica que é uma
+// movimentação de Produto Acabado, não de insumo).
+function _pubMovimentacoesLoteConteudo(lote) {
+    var movs = (dadosERP.movimentacoesEstoque || [])
+        .filter(function(m){ return m.lote === lote && m.produto; })
+        .slice().sort(function(a,b){ return (a.data||'').localeCompare(b.data||''); });
+    if (!movs.length) return '<p style="color:#94a3b8;font-style:italic;text-align:center">Nenhuma movimentação registrada para este lote ainda</p>';
+
+    var totalEntrada = 0, totalSaida = 0;
+    var linhasHTML = movs.map(function(m) {
+        var entrada = m.tipo === 'entrada';
+        var qtd = parseFloat(m.quantidade) || 0;
+        if (entrada) totalEntrada += qtd; else totalSaida += qtd;
+        var dataTxt = m.data || '';
+        try { var d = new Date(m.data); if(!isNaN(d)) dataTxt = d.toLocaleString('pt-BR', {day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}); } catch(e){}
+        return '<div style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid #f1f5f9;font-size:12px">'
+            + '<span style="min-width:0"><strong style="color:' + (entrada?'#059669':'#dc2626') + '">' + (entrada?'Entrada':'Saída') + '</strong><br><span style="color:#64748b;font-size:11px">' + R8.esc(m.origem||'—') + (m.destino?' — '+R8.esc(m.destino):'') + '</span></span>'
+            + '<span style="text-align:right;white-space:nowrap"><strong style="color:' + (entrada?'#059669':'#dc2626') + '">' + (entrada?'+':'−') + Math.abs(qtd).toFixed(2) + 'L</strong><br><span style="color:#cbd5e1;font-size:10px">' + R8.esc(dataTxt) + '</span></span>'
+            + '</div>';
+    }).join('');
+    var saldo = parseFloat(movs[movs.length - 1].saldoAtual) || 0;
+
+    return '<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
+        +   '<div style="flex:1;min-width:80px;text-align:center;background:#f0fdf4;border-radius:8px;padding:8px"><div style="font-weight:800;color:#166534">+' + totalEntrada.toFixed(1) + 'L</div><div style="font-size:10px;color:#64748b">Entrada</div></div>'
+        +   '<div style="flex:1;min-width:80px;text-align:center;background:#fef2f2;border-radius:8px;padding:8px"><div style="font-weight:800;color:#991b1b">−' + totalSaida.toFixed(1) + 'L</div><div style="font-size:10px;color:#64748b">Saída</div></div>'
+        +   '<div style="flex:1;min-width:80px;text-align:center;background:#eff6ff;border-radius:8px;padding:8px"><div style="font-weight:800;color:#1d4ed8">' + saldo.toFixed(1) + 'L</div><div style="font-size:10px;color:#64748b">Saldo (Câmara Fria)</div></div>'
+        +   '</div>'
+        + linhasHTML;
+}
+
 window.renderizarTeleLote = function(container, lote) {
     if(!lote) { container.innerHTML='<div style="padding:40px;text-align:center;color:#94a3b8">Lote não informado.</div>'; return; }
     window._qrModoAtivo = true; // impede que qualquer redirecionamento automático feche esta tela
@@ -11193,14 +11245,18 @@ window.renderizarTeleLote = function(container, lote) {
     // a busca ao Firebase se já tivermos também insumos e vendas (origem/destino)
     var fichasLocal = dadosERP.fichasTecnicas || [];
     var fLocal = fichasLocal.find(function(x){ return x.lote === lote; });
-    var dadosOrigemDestinoOk = (dadosERP.insumos && dadosERP.insumos.length) && dadosERP.produtosAcabados && dadosERP.produtosAcabados.length;
+    var dadosOrigemDestinoOk = (dadosERP.insumos && dadosERP.insumos.length) && dadosERP.produtosAcabados && dadosERP.produtosAcabados.length
+        && dadosERP.vendasPDV && dadosERP.vendasPDV.length && dadosERP.vendasTaps && dadosERP.vendasTaps.length
+        && dadosERP.movimentacoesEstoque && dadosERP.movimentacoesEstoque.length;
     if(fLocal && dadosOrigemDestinoOk) { _renderComFicha(fLocal); return; }
 
     // Buscar diretamente no Firebase (acesso público): fichas + insumos
-    // (fornecedor/produtor/validade) + produtosAcabados (destino do lote).
-    // Cada busca é independente: se uma falhar (ex: regra de permissão
-    // faltando nesse caminho específico), as demais continuam normalmente
-    // em vez de derrubar a ficha inteira.
+    // (fornecedor/produtor/validade) + produtosAcabados (destino agregado do
+    // lote) + vendasPDV/vendasTaps (nome do estabelecimento de cada barril) +
+    // movimentacoesEstoque (Entrada/Saída/Saldo do lote). Cada busca é
+    // independente: se uma falhar (ex: regra de permissão faltando nesse
+    // caminho específico), as demais continuam normalmente em vez de
+    // derrubar a ficha inteira.
     try {
         var fbDb = window.db || (firebase && firebase.apps && firebase.apps.length ? firebase.database() : null);
         if(!fbDb) { _renderComFicha(fLocal||null, 'fbDb indisponível (window.db='+(typeof window.db)+', firebase='+(typeof window.firebase)+')'); return; }
@@ -11213,7 +11269,10 @@ window.renderizarTeleLote = function(container, lote) {
         Promise.all([
             _buscar('fichasTecnicas'),
             _buscar('insumos'),
-            _buscar('produtosAcabados')
+            _buscar('produtosAcabados'),
+            _buscar('vendasPDV'),
+            _buscar('vendasTaps'),
+            _buscar('movimentacoesEstoque')
         ]).then(function(vals) {
             var fichas = vals[0] || [];
             if(!Array.isArray(fichas)) fichas = Object.values(fichas);
@@ -11221,8 +11280,17 @@ window.renderizarTeleLote = function(container, lote) {
             if(!Array.isArray(insumosCad)) insumosCad = Object.values(insumosCad);
             var prodAcab = vals[2] || [];
             if(!Array.isArray(prodAcab)) prodAcab = Object.values(prodAcab);
+            var vendasPDVFetch = vals[3] || [];
+            if(!Array.isArray(vendasPDVFetch)) vendasPDVFetch = Object.values(vendasPDVFetch);
+            var vendasTapsFetch = vals[4] || [];
+            if(!Array.isArray(vendasTapsFetch)) vendasTapsFetch = Object.values(vendasTapsFetch);
+            var movsFetch = vals[5] || [];
+            if(!Array.isArray(movsFetch)) movsFetch = Object.values(movsFetch);
             if(!dadosERP.insumos || !dadosERP.insumos.length) dadosERP.insumos = insumosCad;
             if(!dadosERP.produtosAcabados || !dadosERP.produtosAcabados.length) dadosERP.produtosAcabados = prodAcab;
+            if(!dadosERP.vendasPDV || !dadosERP.vendasPDV.length) dadosERP.vendasPDV = vendasPDVFetch;
+            if(!dadosERP.vendasTaps || !dadosERP.vendasTaps.length) dadosERP.vendasTaps = vendasTapsFetch;
+            if(!dadosERP.movimentacoesEstoque || !dadosERP.movimentacoesEstoque.length) dadosERP.movimentacoesEstoque = movsFetch;
             var f = fLocal || fichas.find(function(x){ return x && x.lote === lote; });
             var debugMsg = 'fichas.length='+fichas.length+(_buscarErros.length?' | erros: '+_buscarErros.join(' / '):'');
             _renderComFicha(f||null, f?null:debugMsg);
@@ -11480,6 +11548,117 @@ window._r8StatusRastreioBarril = function(codigo, barris, sanitizacoes) {
 // pub-loc-card / pub-status-chip já usado na Localização do Lote.
 
 
+// ══════════════════════════════════════════════════════════════════════════
+// RASTREABILIDADE — QR CODE FIXO DA CÂMARA FRIA
+// Diferente do QR do Barril (aponta para 1 barril específico) e do QR do
+// Tanque (aponta para 1 equipamento específico), este QR é fixo num ponto
+// físico (a porta da Câmara Fria) e não muda nunca — pode ser gerado uma
+// única vez (ver botão em Rastreabilidade → Localização Barris, no
+// erp.html) e colado impresso. Ao ser escaneado, mostra a situação agregada
+// NAQUELE MOMENTO: quantos barris estão na Câmara Fria, quantos no PDV e
+// quantos no TAP, cada um com link direto para o próprio QR daquele barril.
+// ══════════════════════════════════════════════════════════════════════════
+
+// Reimplementação parametrizada (sem depender de dadosERP global) da mesma
+// classificação usada em window._localizacaoAtualEmbalagem — necessária
+// porque esta tela pode ser acessada por QR antes do login/carregamento do
+// ERP, igual às demais telas públicas (mostrarDestinoBarrilPub etc.), que
+// também recebem os arrays já buscados em vez de ler dadosERP diretamente.
+function _pubClassificarLocalBarril(b, vendasPDV, vendasTaps, produtosAcabados) {
+    if (!b || b.status !== 'Em Uso') return '';
+    var cod = b.codigo, lote = b.loteAtual || '';
+    var temTap = (vendasTaps || []).some(function(v){ return v.embalagemCodigo === cod && v.lote === lote; });
+    if (temTap) return '🚰 TAP Rota 8';
+    var vendasPdvDoBarril = (vendasPDV || []).filter(function(v){ return v.embalagemCodigo === cod && v.lote === lote; });
+    if (vendasPdvDoBarril.length) {
+        var ultima = vendasPdvDoBarril[vendasPdvDoBarril.length - 1];
+        return '🏪 PDV — ' + (ultima.destino || 'Estabelecimento não informado');
+    }
+    var prod = (produtosAcabados || []).find(function(p){ return p.embalagemCodigo === cod && p.lote === lote; });
+    if (prod && (prod.camaraFria || 0) > 0) return '❄️ Câmara Fria';
+    return '📍 Local não identificado';
+}
+
+function _pubCardResumoLocalizacao(grupos) {
+    return '<div class="pub-card pub-card-block">'
+        +   '<div class="pub-card-title"><i class="fas fa-clipboard-list"></i> Resumo Atual</div>'
+        +   '<div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">'
+        +     '<div style="flex:1;min-width:96px;text-align:center;padding:14px 6px;background:#eff6ff;border-radius:10px"><div style="font-family:\'Bebas Neue\',sans-serif;font-size:26px;color:#1d4ed8">' + grupos.camara.length + '</div><div style="font-size:10px;color:#64748b;letter-spacing:1px;text-transform:uppercase;margin-top:2px">❄️ Câmara Fria</div></div>'
+        +     '<div style="flex:1;min-width:96px;text-align:center;padding:14px 6px;background:#f0fdf4;border-radius:10px"><div style="font-family:\'Bebas Neue\',sans-serif;font-size:26px;color:#166534">' + grupos.pdv.length + '</div><div style="font-size:10px;color:#64748b;letter-spacing:1px;text-transform:uppercase;margin-top:2px">🏪 PDV</div></div>'
+        +     '<div style="flex:1;min-width:96px;text-align:center;padding:14px 6px;background:#fef3c7;border-radius:10px"><div style="font-family:\'Bebas Neue\',sans-serif;font-size:26px;color:#92400e">' + grupos.tap.length + '</div><div style="font-size:10px;color:#64748b;letter-spacing:1px;text-transform:uppercase;margin-top:2px">🚰 TAP</div></div>'
+        +   '</div>'
+        + '</div>';
+}
+
+function _pubCardListaBarrisPorLocal(titulo, itens) {
+    var corpo = (itens && itens.length)
+        ? itens.map(function(it) {
+            var b = it.b;
+            return '<div class="pub-mov-card">'
+                +   '<div class="pub-mov-destino"><i class="fas fa-beer-mug-empty"></i> ' + R8.esc(b.codigo) + (b.descricao ? ' — ' + R8.esc(b.descricao) : '') + '</div>'
+                +   '<div class="pub-mov-datas">'
+                +     '<span><strong>Lote:</strong> ' + R8.esc(b.loteAtual || '—') + '</span>'
+                +     (it.destino ? '<span><strong>Estabelecimento:</strong> ' + R8.esc(it.destino) + '</span>' : '')
+                +   '</div>'
+                +   '<a href="?barril=' + encodeURIComponent(b.codigo) + '" onclick="event.preventDefault();window.mostrarDestinoBarrilPub(\'' + String(b.codigo).replace(/'/g,"\\'") + '\');" class="pub-link-acesso"><i class="fas fa-qrcode"></i> Ver QR deste barril</a>'
+                + '</div>';
+        }).join('')
+        : '<p class="pub-sem-barril">Nenhum barril nesta localização no momento.</p>';
+    return '<div class="pub-card pub-card-block">'
+        +   '<div class="pub-card-title">' + titulo + '</div>'
+        +   corpo
+        + '</div>';
+}
+
+window.mostrarLocalizacaoCamaraFriaPub = function() {
+    var c = document.getElementById('lotePublicoContainer');
+    if (!c) return;
+    var _hideAll = function(){
+        var ids = ['landingPageContent','mainHeader','erpSystemContainer',
+                   'loginFirebaseContainer','estiloPublicoContainer','firebaseLoading'];
+        ids.forEach(function(id){ var el = document.getElementById(id); if(el) el.style.display = 'none'; });
+    };
+    _hideAll();
+    c.style.display = 'block';
+    window._qrModoAtivo = true;
+
+    function _render(barris, vendasPDV, vendasTaps, produtosAcabados) {
+        var grupos = { camara: [], pdv: [], tap: [] };
+        (barris || []).forEach(function(b) {
+            var loc = _pubClassificarLocalBarril(b, vendasPDV, vendasTaps, produtosAcabados);
+            if (loc.indexOf('❄️') === 0) grupos.camara.push({ b: b });
+            else if (loc.indexOf('🏪') === 0) grupos.pdv.push({ b: b, destino: loc.replace('🏪 PDV — ', '') });
+            else if (loc.indexOf('🚰') === 0) grupos.tap.push({ b: b });
+        });
+
+        c.innerHTML = '<div class="pub-screen">'
+            + _pubHeaderBarril('Câmara Fria — Situação Atual')
+            + '<div class="pub-body">'
+            +   _pubCardResumoLocalizacao(grupos)
+            +   _pubCardListaBarrisPorLocal('❄️ Barris na Câmara Fria', grupos.camara)
+            +   _pubCardListaBarrisPorLocal('🏪 Barris no PDV', grupos.pdv)
+            +   _pubCardListaBarrisPorLocal('🚰 Barris no TAP', grupos.tap)
+            + '</div>'
+            + _pubFooter()
+            + '</div>';
+    }
+
+    if ((dadosERP.barris || []).length) { _render(dadosERP.barris, dadosERP.vendasPDV, dadosERP.vendasTaps, dadosERP.produtosAcabados); return; }
+    try {
+        var fbDb = window.db || (typeof firebase !== 'undefined' && firebase.apps && firebase.apps.length ? firebase.database() : null);
+        if (!fbDb) { _render([], [], [], []); return; }
+        Promise.all([
+            fbDb.ref('erp/rota8cervejaria/dados/barris').once('value'),
+            fbDb.ref('erp/rota8cervejaria/dados/vendasPDV').once('value'),
+            fbDb.ref('erp/rota8cervejaria/dados/vendasTaps').once('value'),
+            fbDb.ref('erp/rota8cervejaria/dados/produtosAcabados').once('value')
+        ]).then(function(snaps){
+            var norm = function(v){ v = v || []; return Array.isArray(v) ? v : Object.values(v); };
+            _render(norm(snaps[0].val()), norm(snaps[1].val()), norm(snaps[2].val()), norm(snaps[3].val()));
+        }).catch(function(){ _render([], [], [], []); });
+    } catch(e) { _render([], [], [], []); }
+};
+
 window.mostrarDestinoBarrilPub = function(codigo) {
     var c = document.getElementById('lotePublicoContainer');
     if (!c) return;
@@ -11547,10 +11726,12 @@ window.mostrarDestinoBarrilPub = function(codigo) {
                 (f ? f.lote : (prod.lote || '—')),
                 (f ? f.estilo : (prod.estilo || '—')),
                 (formatarData(prod.dataEnvase) || prod.dataEnvase || '—'),
-                (f && f.dataProducao ? (formatarData(f.dataProducao) || f.dataProducao) : '—')
+                (f && f.dataProducao ? (formatarData(f.dataProducao) || f.dataProducao) : '—'),
+                (f ? f.tanque : '')
               )
             + '<div class="pub-body">'
             +   _pubCardOrigemDestino(passos)
+            +   _pubCardFichaTecnicaBarril(f ? f.lote : (prod.lote || ''))
             +   _pubCardHistoricoMovimentacoes(movs)
             +   _pubCardSanitizacao(infoStatus)
             + '</div>'
@@ -11755,6 +11936,8 @@ function _renderizarConteudoLote(container, f) {
         +   '<h2 class="pub-group-title"><i class="fas fa-beer-mug-empty"></i> Produto</h2>'
         +   ((f.caracteristicasPersonalizadas&&f.caracteristicasPersonalizadas.trim()) ? '<div class="pub-section"><h3 class="pub-sec-title"><i class="fas fa-wine-glass-alt"></i> Perfil Sensorial</h3><div class="pub-card"><p class="pub-sensorial">'+f.caracteristicasPersonalizadas.trim()+'</p></div></div>' : (estiloInfo ? '<div class="pub-section"><h3 class="pub-sec-title"><i class="fas fa-wine-glass-alt"></i> Perfil Sensorial</h3><div class="pub-card"><p class="pub-sensorial">'+estiloInfo.sensorial+'</p><p style="text-align:center;margin-top:10px;font-size:13px;color:#94a3b8;font-style:italic">✦ '+estiloInfo.origem+' · ABV: '+estiloInfo.abv+'</p></div></div>' : ''))
         +   '<div class="pub-section" id="pub-destino-lote"><h3 class="pub-sec-title"><i class="fas fa-truck"></i> Destino do Lote</h3><div class="pub-card">'+destinoHTML+'</div></div>'
+        +   '<div class="pub-section"><h3 class="pub-sec-title"><i class="fas fa-beer-mug-empty"></i> Barris — Destino de Cada Unidade</h3><div class="pub-card">'+(typeof window._r8MontarLocalizacaoLote==='function' ? window._r8MontarLocalizacaoLote(f) : '')+'</div></div>'
+        +   '<div class="pub-section"><h3 class="pub-sec-title"><i class="fas fa-exchange-alt"></i> Movimentações do Lote</h3><div class="pub-card">'+_pubMovimentacoesLoteConteudo(f.lote)+'</div></div>'
         +   '<div class="pub-section"><h3 class="pub-sec-title"><i class="fas fa-user-check"></i> Responsável</h3><div class="pub-card"><div class="pub-resp-box"><div class="pub-resp-icon"><i class="fas fa-user"></i></div><div><div class="pub-resp-name">'+(f.responsavel||'—')+'</div><div class="pub-resp-sub">Mestre Cervejeiro — Rota 8 Cervejaria</div></div></div></div></div>'
         +   '<div class="pub-section"><h3 class="pub-sec-title"><i class="fas fa-qrcode"></i> Autenticidade</h3><div class="pub-card"><div class="pub-qr-box"><div id="_pubQrImg" style="min-height:60px;display:flex;align-items:center;justify-content:center"><i class="fas fa-spinner fa-spin" style="color:#94a3b8;font-size:24px"></i></div><div class="pub-auth-code">'+f.lote+'</div><p class="pub-auth-text">Este QR Code certifica a autenticidade e rastreabilidade<br>deste lote produzido pela Rota 8 Cervejaria.</p></div></div></div>'
         + '</div>'
@@ -11850,6 +12033,7 @@ window.renderizarTelaEstilo = function(container, estiloKey) {
     var equipamentoParam = params.get('equipamento') || params.get('tanque');
     var sanitizacaoParam = params.get('sanitizacao');
     var vendaParam = params.get('venda');
+    var localParam = params.get('local');
     var focoParam = params.get('foco');
     if(focoParam) window._qrFocoParam = focoParam;
     if(loteParam) {
@@ -11895,6 +12079,16 @@ window.renderizarTelaEstilo = function(container, estiloKey) {
         var hd4 = document.getElementById('mainHeader');
         if(lp4) lp4.style.display = 'none';
         if(hd4) hd4.style.display = 'none';
+    }
+    // "local" — QR Code fixo de um ponto físico (ex.: porta da Câmara Fria),
+    // não vinculado a um barril/lote específico: mostra a situação atual
+    // agregada (quantos barris em cada localização).
+    if(localParam) {
+        window._qrLocalParam = localParam;
+        var lp5 = document.getElementById('landingPageContent');
+        var hd5 = document.getElementById('mainHeader');
+        if(lp5) lp5.style.display = 'none';
+        if(hd5) hd5.style.display = 'none';
     }
 })();
 
@@ -11987,6 +12181,8 @@ var authTimeout = setTimeout(function() {
         mostrarLotePub(window._qrLoteParam);
     } else if(window._qrEstiloParam) {
         mostrarEstiloPub(window._qrEstiloParam);
+    } else if(window._qrLocalParam === 'camarafria') {
+        mostrarLocalizacaoCamaraFriaPub();
     } else {
         mostrarLandingPage();
     }
@@ -12020,6 +12216,8 @@ function _iniciarAuthListener() {
             mostrarLotePub(window._qrLoteParam);
         } else if(window._qrEstiloParam) {
             mostrarEstiloPub(window._qrEstiloParam);
+        } else if(window._qrLocalParam === 'camarafria') {
+            mostrarLocalizacaoCamaraFriaPub();
         } else {
             mostrarLandingPage();
         }
