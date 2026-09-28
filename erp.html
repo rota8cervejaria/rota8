@@ -26,7 +26,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-09-27-6';
+    window.R8_BUILD = '2026-09-28-1';
     (function() {
         var buildVisto = null;
         try { buildVisto = localStorage.getItem('r8_build_visto'); } catch(e){}
@@ -6937,7 +6937,18 @@ window.irParaTelaERP = function(id) {
     if(id==='telaCarbonacao') { setTimeout(function(){ if(window._carbRenderTabela) _carbRenderTabela(); }, 100); }
     if(id==='telaReceitasImportadas') atualizarListaReceitasImportadas();
     if(id==='telaFichasArquivadas') atualizarListaFichasERP();
-    if(id==='telaEstoqueInsumos') { atualizarTabelaEstoqueAgrupada(); setTimeout(_renderizarAlertasEstoque,80); }
+    if(id==='telaEstoqueInsumos') {
+        // CORREÇÃO (2026-09-28): o filtro "Tipo" (e a busca) ficavam com o
+        // valor da última vez que a tela foi usada. Um insumo novo, de um
+        // tipo diferente do que estava filtrado, simplesmente não aparecia
+        // — parecendo que o cadastro "não atualizou o Estoque". Toda vez
+        // que a tela é aberta pelo menu, os filtros voltam ao padrão (lista
+        // completa), evitando esse item "sumido" por engano.
+        var elBusca = document.getElementById('buscaEstoque'); if (elBusca) elBusca.value = '';
+        var elTipo = document.getElementById('filtroTipoEstoqueNovo'); if (elTipo) elTipo.value = '';
+        var elBaixo = document.getElementById('estoqueBaixoCheck'); if (elBaixo) elBaixo.checked = false;
+        atualizarTabelaEstoqueAgrupada(); setTimeout(_renderizarAlertasEstoque,80);
+    }
     if(id==='telaBaixaEstoque') _mudarAbaBaixaEstoque('insumo');
     if(id==='telaEstoqueProdutoAcabado') atualizarTabelaProdutoAcabado();
     if(id==='telaEstoqueLimpeza') atualizarEstoqueLimpezaERP();
@@ -9932,59 +9943,21 @@ function adicionarEnvaseERP() {
         loteEmbalagem: loteEmb, responsavel: resp
     });
 
-    // Verifica se já existe produto acabado para este lote+tipo (evita duplicidade)
-    var prodExistente = (dadosERP.produtosAcabados || []).find(function(p){
-        return p.lote === lote && p.tipoEmbalagem === tipo;
-    });
-
-    if (prodExistente) {
-        // Somar ao estoque existente do mesmo lote+tipo
-        var saldoAntes = prodExistente.quantidade;
-        prodExistente.quantidade = parseFloat((prodExistente.quantidade + volTotal).toFixed(2));
-        prodExistente.camaraFria = parseFloat(((prodExistente.camaraFria || 0) + volTotal).toFixed(2));
-        if (prodExistente.status === 'Esgotado') prodExistente.status = 'Disponível';
-
-        // Registra movimentação de entrada
-        if (!dadosERP.movimentacoesEstoque) dadosERP.movimentacoesEstoque = [];
-        dadosERP.movimentacoesEstoque.push({
-            id: Date.now() + '_env',
-            data: obterDataHora(), tipo: 'entrada',
-            produto: ficha.estilo, lote: lote,
-            tipoEmbalagem: tipo, quantidade: volTotal,
-            origem: 'Envase (adição)',
-            saldoAnterior: saldoAntes, saldoAtual: prodExistente.quantidade
-        });
-
-        R8.toast.ok('Estoque atualizado — Lote ' + lote + ': +' + volTotal + 'L (total: ' + prodExistente.quantidade.toFixed(1) + 'L)');
-    } else {
-        // Novo produto acabado
-        if (!dadosERP.produtosAcabados) dadosERP.produtosAcabados = [];
-        dadosERP.produtosAcabados.push({
-            lote: lote,
-            estilo: ficha.estilo,
-            tipoEmbalagem: tipo,
-            dataEnvase: data,
-            quantidade: volTotal,
-            localizacao: 'Câmara Fria',
-            status: 'Disponível',
-            pdv: 0,
-            camaraFria: volTotal,
-            taps: 0
-        });
-
-        // Registra movimentação de entrada
-        if (!dadosERP.movimentacoesEstoque) dadosERP.movimentacoesEstoque = [];
-        dadosERP.movimentacoesEstoque.push({
-            id: Date.now() + '_env',
-            data: obterDataHora(), tipo: 'entrada',
-            produto: ficha.estilo, lote: lote,
-            tipoEmbalagem: tipo, quantidade: volTotal,
-            origem: 'Envase (novo)',
-            saldoAnterior: 0, saldoAtual: volTotal
-        });
-
-        R8.toast.ok('Produto acabado criado — ' + ficha.estilo + ' | Lote ' + lote + ' | ' + volTotal + 'L em Câmara Fria');
-    }
+    // CORREÇÃO (2026-09-28): esta função tinha sua PRÓPRIA lógica de
+    // criar/somar produtosAcabados aqui, usando uma chave (lote+tipo) mais
+    // "solta" que a usada por window._sincronizarProdutosAcabadosDeFichas
+    // (lote+embalagemCodigo, quando a embalagem é um barril específico já
+    // cadastrado individualmente via a Ficha Técnica). As duas lógicas
+    // podiam divergir: um envase genérico lançado aqui era somado ao
+    // registro de QUALQUER barril já existente daquele lote+tipo (inflando
+    // o volume daquele barril específico), e o reconciliador criava DEPOIS
+    // um registro extra pra essa mesma entrada — resultando em estoque
+    // maior que o volume real envasado. A partir de agora esta função só
+    // grava o lançamento em ficha.envases (a fonte real) e delega todo o
+    // cálculo de produtosAcabados ao reconciliador, que já trata
+    // corretamente os dois casos (barril específico vs. genérico).
+    if (typeof window._sincronizarProdutosAcabadosDeFichas === 'function') window._sincronizarProdutosAcabadosDeFichas();
+    R8.toast.ok('Envase registrado — Lote ' + lote + ': +' + volTotal + 'L');
 
     // Grava o registro de envase
     if (!dadosERP.envases) dadosERP.envases = [];
@@ -10059,21 +10032,15 @@ window.excluirEnvase=function(i){confirmarAcao({titulo:'Excluir registro de enva
             });
             if (idxNaFicha !== -1) ficha.envases.splice(idxNaFicha, 1);
         }
-        // Estorna o estoque de produto acabado gerado por esse envase
-        var pa = (dadosERP.produtosAcabados||[]).find(function(p){ return p.lote === reg.lote && p.tipoEmbalagem === reg.tipo; });
-        if (pa && vol > 0) {
-            var saldoAntes = pa.camaraFria || 0;
-            pa.quantidade = Math.max(0, (pa.quantidade||0) - vol);
-            pa.camaraFria = Math.max(0, saldoAntes - vol);
-            pa.status = pa.camaraFria === 0 ? 'Esgotado' : (pa.camaraFria < 10 ? 'Baixo' : 'Disponível');
-            if (!dadosERP.movimentacoesEstoque) dadosERP.movimentacoesEstoque = [];
-            dadosERP.movimentacoesEstoque.push({
-                id: Date.now()+'_excl_env', data: obterDataHora(), tipo:'saida',
-                produto: pa.estilo, quantidade: vol, lote: reg.lote,
-                origem: 'Produto Acabado (estorno por exclusão de envase)',
-                saldoAnterior: saldoAntes, saldoAtual: pa.camaraFria
-            });
-        }
+        // Estorna o estoque de produto acabado gerado por esse envase.
+        // CORREÇÃO (2026-09-28): delega ao mesmo reconciliador usado no
+        // lançamento (window._sincronizarProdutosAcabadosDeFichas), em vez
+        // de mexer direto num registro achado só por lote+tipo — essa busca
+        // solta podia acertar o registro de um BARRIL ESPECÍFICO errado
+        // quando havia mais de um registro do mesmo lote+tipo (um por
+        // barril individual). O reconciliador recalcula a partir de
+        // ficha.envases (já sem esta entrada), que é a fonte real.
+        if (typeof window._sincronizarProdutosAcabadosDeFichas === 'function') window._sincronizarProdutosAcabadosDeFichas();
     }
     dadosERP.envases.splice(i,1);
     salvarDadosLocal();
@@ -11451,7 +11418,19 @@ function popularSelectLotesDisponveis(selectId,estiloInputId){
     // individualmente; quem esgota é o lote.
     var saldoPorLote={};
     (dadosERP.produtosAcabados||[]).forEach(function(p){ saldoPorLote[p.lote]=parseFloat(((saldoPorLote[p.lote]||0)+(p.camaraFria||0)).toFixed(2)); });
-    let lotes=dadosERP.produtosAcabados.filter(function(p){return lotesValidos[p.lote] && (p.camaraFria||0)>0;});
+    let lotes=dadosERP.produtosAcabados.filter(function(p){
+        if(!(lotesValidos[p.lote] && (p.camaraFria||0)>0)) return false;
+        // Barril com código individual: uma vez vinculado a QUALQUER venda
+        // (PDV) ou transferência (TAP) daquele lote, some da lista mesmo
+        // que reste saldo parcial calculado — tratado como unidade única
+        // (o barril inteiro), não como um pool líquido divisível.
+        if (p.embalagemCodigo) {
+            var jaVinculado = (dadosERP.vendasPDV||[]).some(function(v){ return v.lote===p.lote && v.embalagemCodigo===p.embalagemCodigo; })
+                || (dadosERP.vendasTaps||[]).some(function(v){ return v.lote===p.lote && v.embalagemCodigo===p.embalagemCodigo; });
+            if (jaVinculado) return false;
+        }
+        return true;
+    });
     if(!lotes.length){s.innerHTML='<option value="">Nenhuma embalagem disponível</option>';return;}
     // Chave composta lote+embalagem (código do barril específico, ou "Lata"
     // para embalagens sem cadastro individual) — cada embalagem envasada
