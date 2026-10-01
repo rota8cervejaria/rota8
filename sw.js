@@ -1,15 +1,18 @@
-// Service Worker do Rota 8 ERP — apenas cache de arquivos estáticos para
-// permitir instalação como app (PWA) e uso offline básico da casca do app.
-// Não interfere em nenhuma lógica de negócio do sistema.
+// Service Worker do Rota 8 ERP — cache mínimo, apenas para permitir
+// instalação como PWA e uso offline básico. Não interfere em nenhuma
+// lógica de negócio do sistema.
 //
-// v6: sobe a versão do cache para forçar a substituição imediata da cópia
-// antiga guardada nos aparelhos (link e app) pela versão corrigida do
-// index.html (fonte única de verdade = Firebase). Sem essa troca de nome,
-// aparelhos que já tinham a v5 em cache só pegariam o arquivo novo na
-// próxima vez que o fetch de rede tivesse sucesso — o que já deveria
-// acontecer sozinho (network-first), mas subir a versão garante isso de
-// forma imediata e inequívoca neste deploy específico.
-const CACHE_NAME = 'rota8-erp-cache-v6';
+// CORREÇÃO (2026-09-28): a versão anterior (v6) reescrevia a URL de toda
+// requisição de navegação para "furar" o cache da CDN, e se essa busca na
+// rede falhasse por QUALQUER motivo, caía num fallback que devolvia a
+// cópia salva do index.html — para QUALQUER arquivo pedido, mesmo um que
+// nunca tinha sido cacheado antes (ex.: erp.html, erp-v2.html). Na prática,
+// isso fazia o site inteiro mostrar sempre o index.html antigo, não
+// importa qual página fosse realmente aberta. Esta versão nunca substitui
+// um arquivo pelo conteúdo de outro — só usa cache como reserva para
+// quando o aparelho está genuinamente offline, e só devolve o PRÓPRIO
+// arquivo pedido, nunca outro.
+const CACHE_NAME = 'rota8-erp-cache-v7';
 const ASSETS_TO_CACHE = [
   './index.html',
   './manifest.json',
@@ -40,42 +43,19 @@ self.addEventListener('activate', function(event) {
 });
 
 self.addEventListener('fetch', function(event) {
-  // Somente GET; deixa tudo mais (Firebase, APIs) passar direto pela rede
+  // Somente GET; deixa tudo mais (Firebase, APIs) passar direto pela rede.
   if (event.request.method !== 'GET') return;
 
-  // Só cuida de requisições do próprio site (mesma origem). Qualquer coisa
-  // de outro domínio — Firebase, fontes do Google, CDNs de bibliotecas —
-  // não passa pelo Service Worker de jeito nenhum, evitando qualquer
-  // interferência na conexão em tempo real do Firebase.
+  // Só cuida de requisições do próprio site (mesma origem). Firebase,
+  // fontes do Google, CDNs de bibliotecas — tudo isso passa direto, sem
+  // nenhuma interferência deste Service Worker.
   if (new URL(event.request.url).origin !== self.location.origin) return;
 
-  // Network-first: busca sempre a versão mais nova primeiro.
-  // Só usa a cópia salva em cache se estiver offline (sem rede).
-  // Isso garante que o app instalado (ícone) e o navegador mostrem
-  // sempre o mesmo conteúdo, o mais atual possível.
-  //
-  // Para a página principal (navegação/index.html), a busca na rede
-  // recebe um parâmetro variável (?_cb=timestamp) — isso só afeta a
-  // requisição interna que o Service Worker faz, não muda a URL que
-  // aparece pro usuário. Isso é necessário porque a CDN do GitHub Pages
-  // (Fastly) guarda cópias da página por conta própria e, sem esse
-  // truque, pode devolver uma versão antiga mesmo quando pedimos a mais
-  // nova diretamente da rede.
-  var isAppShell = event.request.mode === 'navigate' || event.request.url.indexOf('index.html') !== -1;
-  var fetchRequest = event.request;
-  if (isAppShell) {
-    var bustedUrl = new URL(event.request.url);
-    bustedUrl.searchParams.set('_cb', Date.now());
-    fetchRequest = new Request(bustedUrl.toString(), {
-      method: 'GET',
-      headers: event.request.headers,
-      credentials: event.request.credentials,
-      cache: 'no-store'
-    });
-  }
-
+  // Network-first, sempre — sem reescrever a URL da requisição. A
+  // reescrita anterior (para tentar furar cache de CDN) era o ponto que
+  // podia falhar e disparar o fallback errado.
   event.respondWith(
-    fetch(fetchRequest).then(function(response) {
+    fetch(event.request, { cache: 'no-store' }).then(function(response) {
       if (response && response.status === 200 && response.type === 'basic') {
         var responseClone = response.clone();
         caches.open(CACHE_NAME).then(function(cache) {
@@ -84,14 +64,11 @@ self.addEventListener('fetch', function(event) {
       }
       return response;
     }).catch(function() {
-      return caches.match(event.request).then(function(cached) {
-        if (cached) return cached;
-        // Se a URL exata não estiver no cache (ex.: abertura pelo ícone
-        // do app com URL levemente diferente), cai para a casca do app
-        // já salva em vez de deixar a resposta vazia (o que gerava a
-        // tela "Esta página não está funcionando").
-        return caches.match('./index.html');
-      });
+      // Sem rede (genuinamente offline): usa cache SÓ se for exatamente o
+      // arquivo pedido. Nunca substitui pelo index.html ou qualquer outro
+      // arquivo — se não tiver esse arquivo específico em cache, deixa
+      // falhar (o navegador mostra a tela padrão de "sem conexão").
+      return caches.match(event.request);
     })
   );
 });
