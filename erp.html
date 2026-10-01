@@ -26,7 +26,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-09-28-5';
+    window.R8_BUILD = '2026-09-28-6';
     (function() {
         var buildVisto = null;
         try { buildVisto = localStorage.getItem('r8_build_visto'); } catch(e){}
@@ -11219,6 +11219,24 @@ window._sincronizarProdutosAcabadosDeFichas = function() {
                 if (g.embalagemDescricao) existente.embalagemDescricao = g.embalagemDescricao;
             }
         });
+    });
+
+    // ── TRAVA DE SANIDADE (self-healing) ────────────────────────────────
+    // CORREÇÃO (2026-09-28): confirmado por diagnóstico real que um
+    // registro pode acabar com camaraFria MAIOR que sua própria quantidade
+    // total produzida (ex.: um barril de 30L mostrando 110L na Câmara
+    // Fria) — resíduo gravado por um bug já corrigido em outro ponto do
+    // sistema (estorno de venda cancelada, no Financeiro, que somava o
+    // valor no registro errado). Fisicamente isso é impossível: nunca pode
+    // sobrar mais líquido na Câmara Fria do que o que foi realmente
+    // envasado menos o que já saiu (pdv+taps). Corrige sozinho, toda vez
+    // que esta tela é aberta — sem precisar de reset manual nem apagar
+    // histórico de vendas.
+    dadosERP.produtosAcabados.forEach(function(p) {
+        var maxPossivel = (p.quantidade || 0) - (p.pdv || 0) - (p.taps || 0);
+        if ((p.camaraFria || 0) > maxPossivel + 0.01) {
+            p.camaraFria = Math.max(0, parseFloat(maxPossivel.toFixed(2)));
+        }
     });
 
     // ── LIMPEZA AUTOMÁTICA (self-healing) ───────────────────────────────
