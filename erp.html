@@ -26,7 +26,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-09-28-6';
+    window.R8_BUILD = '2026-09-28-7';
     (function() {
         var buildVisto = null;
         try { buildVisto = localStorage.getItem('r8_build_visto'); } catch(e){}
@@ -11107,16 +11107,23 @@ function atualizarTabelaEstoqueAgrupada(){
     if(kCr) kCr.textContent=nCrit;
     if(kZr) kZr.textContent=nZero;
 
-    // Sub-menu Saldo — cards por lote, com saldo e data de cada insumo usado
+    // Sub-menu Saldo — CORREÇÃO (2026-09-28): esta lista usava
+    // _htmlSaldoPorLoteInsumos(), que só mostra insumos JÁ USADOS em
+    // alguma ficha técnica (receita) — um insumo recém-cadastrado mas
+    // ainda não usado em nenhuma produção (ex.: MALBLA-001) nunca
+    // aparecia, não importa a busca. "Saldo Insumos" deve ser o catálogo
+    // COMPLETO (o array `dados` já calculado acima, com todos os insumos
+    // cadastrados), não um recorte por uso em receita. O container
+    // 'corpoTabelaEstoque' referenciado antes aqui não existe mais no
+    // HTML desta tela (órfão de uma versão anterior) — o container real é
+    // 'saldoPorLoteInsumos'.
     var elSaldoRes = document.getElementById('saldoPorLoteInsumos');
-    if (elSaldoRes) elSaldoRes.innerHTML = _htmlSaldoPorLoteInsumos(busca, tipo, baixo);
-
-    var c = document.getElementById('corpoTabelaEstoque'); if(!c) return;
+    if (!elSaldoRes) return;
     if(!dados.length){
-        c.innerHTML = '<div class="card-item" style="text-align:center;padding:32px;color:#94a3b8"><i class="fas fa-box-open" style="font-size:32px;display:block;margin-bottom:10px;color:#cbd5e1"></i>Nenhum insumo encontrado</div>';
+        elSaldoRes.innerHTML = '<div class="card-item" style="text-align:center;padding:32px;color:#94a3b8"><i class="fas fa-box-open" style="font-size:32px;display:block;margin-bottom:10px;color:#cbd5e1"></i>Nenhum insumo encontrado</div>';
         return;
     }
-    c.innerHTML = dados.map(function(d){
+    elSaldoRes.innerHTML = dados.map(function(d){
         var zerado  = d.qtdTotal <= 0;
         var critico = d.qtdTotal > 0 && d.qtdTotal < 5;
         var statusClass = zerado ? 'status-zerado' : critico ? 'status-critico' : 'status-ok';
