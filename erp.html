@@ -26,7 +26,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-09-28-7';
+    window.R8_BUILD = '2026-10-10-3';
     (function() {
         var buildVisto = null;
         try { buildVisto = localStorage.getItem('r8_build_visto'); } catch(e){}
@@ -12720,6 +12720,93 @@ window.r8pdfRodape=function(doc){let total=doc.internal.getNumberOfPages();for(l
     // Rodapé
     doc.setFillColor(255,255,255);doc.rect(0,286,210,11,'F');doc.setFillColor(196,154,43);doc.rect(0,285,210,1,'F');doc.setTextColor(44,24,16);doc.setFontSize(7);doc.setFont('helvetica','normal');doc.text('ROTA 8 CERVEJARIA',14,292);doc.text('Pág. '+i+' / '+total,196,292,{align:'right'});}};
 window.r8pdfEstiloTabela={headStyles:{fillColor:[235,222,190],textColor:[44,24,16],fontStyle:'bold',fontSize:8,cellPadding:3},bodyStyles:{fontSize:8,textColor:[44,24,16],cellPadding:2.5},alternateRowStyles:{fillColor:[252,248,240]},tableLineColor:[210,190,150],tableLineWidth:0.2,margin:{left:14,right:14,bottom:34}};
+
+// ══════════════════════════════════════════════════════════════════════════
+// FILTRO DE PERÍODO — Bloco Relatórios
+// Em vez de um seletor sempre visível no topo da tela, cada botão de
+// relatório abre uma pequena janela perguntando o período (De/Até) na
+// hora de gerar — janela criada e anexada ao <body> (como selecionarOpcao),
+// então funciona a partir de qualquer tela. Deixar em branco = o relatório
+// usa seu período padrão (mês atual ou histórico completo, conforme o
+// caso). Relatórios de SALDO ATUAL (Estoque de Insumos, Produto Acabado)
+// não perguntam período — são sempre uma fotografia do momento presente,
+// não dá para reconstruir saldo histórico sem um livro-razão por data.
+window._r8RelPeriodoAtual = { de: '', ate: '', ativo: false };
+window._r8RelPeriodo = function(){
+    return window._r8RelPeriodoAtual || { de:'', ate:'', ativo:false };
+};
+window._r8FiltrarPorPeriodo = function(lista, campoData, periodo){
+    if (!periodo || !periodo.ativo) return lista || [];
+    return (lista||[]).filter(function(item){
+        var raw = item ? item[campoData] : null;
+        if (!raw) return false;
+        var data = String(raw).split(' ')[0]; // remove hora, se houver (ex.: movimentações)
+        if (periodo.de && data < periodo.de) return false;
+        if (periodo.ate && data > periodo.ate) return false;
+        return true;
+    });
+};
+window._r8PeriodoSubtitulo = function(periodo, padrao){
+    if (!periodo || !periodo.ativo) return padrao;
+    if (periodo.de && periodo.ate) return 'Período: ' + formatarData(periodo.de) + ' a ' + formatarData(periodo.ate);
+    if (periodo.de) return 'A partir de ' + formatarData(periodo.de);
+    return 'Até ' + formatarData(periodo.ate);
+};
+// Janela de escolha de período, aberta ao clicar em "Gerar PDF"/"CSV" de um
+// relatório específico. Segue o mesmo padrão de window.selecionarOpcao:
+// cria o overlay uma vez, anexado ao <body> (não preso a nenhuma tela).
+window._r8AbrirPeriodoRelatorio = function(opcoes){
+    // opcoes: { titulo, onConfirm(periodo) }
+    var overlay = document.getElementById('r8PeriodoOverlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'r8PeriodoOverlay';
+        overlay.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:99999;align-items:center;justify-content:center;padding:16px';
+        overlay.innerHTML =
+            '<div style="background:#fff;border-radius:14px;padding:20px;max-width:340px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,.3)">'
+            + '<h3 id="r8PeriodoTitulo" style="margin:0 0 4px;font-size:16px;color:#222"></h3>'
+            + '<p style="margin:0 0 14px;font-size:11.5px;color:#888">Deixe em branco para usar o período padrão deste relatório.</p>'
+            + '<div style="display:flex;gap:8px;margin-bottom:8px">'
+            + '<div style="flex:1"><label style="display:block;font-size:10px;color:#888;margin-bottom:2px">De</label><input type="date" id="r8PeriodoDeModal" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:8px;font-size:13px;box-sizing:border-box"></div>'
+            + '<div style="flex:1"><label style="display:block;font-size:10px;color:#888;margin-bottom:2px">Até</label><input type="date" id="r8PeriodoAteModal" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:8px;font-size:13px;box-sizing:border-box"></div>'
+            + '</div>'
+            + '<button id="r8PeriodoLimparModal" type="button" style="background:none;border:none;color:#888;font-size:11px;text-decoration:underline;cursor:pointer;padding:0;margin-bottom:16px">Limpar datas</button>'
+            + '<div style="display:flex;gap:8px;justify-content:flex-end">'
+            + '<button id="r8PeriodoCancelar" type="button" style="padding:8px 16px;border-radius:8px;border:none;background:#eee;color:#333;cursor:pointer">Cancelar</button>'
+            + '<button id="r8PeriodoGerar" type="button" style="padding:8px 16px;border-radius:8px;border:none;background:#c49a2b;color:#fff;cursor:pointer;font-weight:700">Gerar</button>'
+            + '</div></div>';
+        document.body.appendChild(overlay);
+    }
+    overlay.querySelector('#r8PeriodoTitulo').textContent = opcoes.titulo || 'Período do Relatório';
+    var deInp = overlay.querySelector('#r8PeriodoDeModal');
+    var ateInp = overlay.querySelector('#r8PeriodoAteModal');
+    deInp.value = ''; ateInp.value = '';
+    overlay.style.display = 'flex';
+    // remove listeners antigos clonando os botões (mesmo padrão do confirmarAcao/selecionarOpcao)
+    var btnGerar = overlay.querySelector('#r8PeriodoGerar');
+    var btnCancelar = overlay.querySelector('#r8PeriodoCancelar');
+    var btnLimpar = overlay.querySelector('#r8PeriodoLimparModal');
+    var novoGerar = btnGerar.cloneNode(true); btnGerar.parentNode.replaceChild(novoGerar, btnGerar);
+    var novoCancelar = btnCancelar.cloneNode(true); btnCancelar.parentNode.replaceChild(novoCancelar, btnCancelar);
+    var novoLimpar = btnLimpar.cloneNode(true); btnLimpar.parentNode.replaceChild(novoLimpar, btnLimpar);
+    novoLimpar.addEventListener('click', function(){ deInp.value=''; ateInp.value=''; });
+    novoGerar.addEventListener('click', function(){
+        var periodo = { de: deInp.value || '', ate: ateInp.value || '', ativo: !!(deInp.value || ateInp.value) };
+        overlay.style.display = 'none';
+        if (typeof opcoes.onConfirm === 'function') opcoes.onConfirm(periodo);
+    });
+    novoCancelar.addEventListener('click', function(){ overlay.style.display = 'none'; });
+    overlay.onclick = function(e){ if (e.target === overlay) overlay.style.display = 'none'; };
+};
+// Wrapper usado pelos botões de relatório: abre a janela de período e, ao
+// confirmar, roda o gerador (PDF/CSV) já com esse período aplicado.
+window._r8GerarComPeriodo = function(titulo, fnGerador){
+    window._r8AbrirPeriodoRelatorio({ titulo: titulo, onConfirm: function(periodo){
+        window._r8RelPeriodoAtual = periodo;
+        try { fnGerador(); }
+        finally { window._r8RelPeriodoAtual = { de:'', ate:'', ativo:false }; }
+    }});
+};
 // ══════════════════════════════════════════════════════════════════════════
 // Auto-ajuste de tabelas dos relatórios PDF — calcula automaticamente a
 // largura de cada coluna e o tamanho de fonte necessário para que todo o
@@ -12877,8 +12964,9 @@ window.gerarPDFEstoque=function(){
 };
 window.gerarPDFMovimentacoesEstoque=function(){
     const{jsPDF}=window.jspdf;const doc=new jsPDF();
-    r8pdfCabecalho(doc,'Movimentações de Estoque','Entradas e saídas — '+obterData());
-    let movs=(dadosERP.movimentacoesEstoque||[]).slice().reverse();
+    const periodo=window._r8RelPeriodo();
+    r8pdfCabecalho(doc,'Movimentações de Estoque',window._r8PeriodoSubtitulo(periodo,'Entradas e saídas — '+obterData()));
+    let movs=window._r8FiltrarPorPeriodo((dadosERP.movimentacoesEstoque||[]).slice().reverse(),'data',periodo);
     if(!movs.length){doc.setFontSize(10);doc.text('Nenhuma movimentação registrada.',14,60);r8pdfRodape(doc);doc.save('movimentacoes_'+obterData().replace(/\//g,'-')+'.pdf');return;}
     let linhas=movs.map(function(m){
         return[
@@ -12921,7 +13009,7 @@ doc.setTextColor(44,24,16);doc.setFontSize(10);doc.setFont('helvetica','bold');
 doc.text('SALDO TOTAL EM CÂMARA FRIA: '+totalCamaraFria.toFixed(1)+' L',16,startYPA+5.5);
 r8pdfRodape(doc);doc.save('produto_acabado_'+obterData()+'.pdf');};
 window.gerarPDFEnvase=function(){const{jsPDF}=window.jspdf;const doc=new jsPDF();r8pdfCabecalho(doc,'Relatório de Envases','Lotes com envase informado');let linhas=[];(dadosERP.fichasTecnicas||[]).filter(function(f){return f.envases&&f.envases.length;}).forEach(function(f){f.envases.forEach(function(e){linhas.push([formatarData(e.data),f.lote,f.estilo||'-',(e.tipo||'-')+(e.embalagemCodigo?' ['+e.embalagemCodigo+']':''),e.quantidade||'-',(e.volumeUnitario?e.volumeUnitario+' L':'-'),(parseFloat(e.volume||e.volumeTotal)||0)+' L']);});});r8pdfAutoTable(doc,{head:[['Data','Lote','Estilo','Embalagem','Qtd','Vol Unit','Vol Total']],body:linhas,startY:58});r8pdfRodape(doc);doc.save('envases_'+obterData()+'.pdf');};
-window.gerarPDFSanitizacao=function(){const{jsPDF}=window.jspdf;const doc=new jsPDF();r8pdfCabecalho(doc,'Registros de Sanitização','Controle de higienização');let linhas=dadosERP.sanitizacoes.map(function(s){return[formatarData(s.data),s.local||s.equipamento,s.produto,s.lote||'-',(s.concentracao||'-')+'%',(s.tempo||'-')+' min',s.responsavel||'-'];});r8pdfAutoTable(doc,{head:[['Data','Local','Produto','Lote','Conc.','Tempo','Resp.']],body:linhas,startY:58});r8pdfRodape(doc);doc.save('sanitizacao_'+obterData()+'.pdf');};
+window.gerarPDFSanitizacao=function(){const{jsPDF}=window.jspdf;const doc=new jsPDF();const periodo=window._r8RelPeriodo();const regs=window._r8FiltrarPorPeriodo(dadosERP.sanitizacoes,'data',periodo);r8pdfCabecalho(doc,'Registros de Sanitização',window._r8PeriodoSubtitulo(periodo,'Controle de higienização'));let linhas=regs.map(function(s){return[formatarData(s.data),s.local||s.equipamento,s.produto,s.lote||'-',(s.concentracao||'-')+'%',(s.tempo||'-')+' min',s.responsavel||'-'];});r8pdfAutoTable(doc,{head:[['Data','Local','Produto','Lote','Conc.','Tempo','Resp.']],body:linhas,startY:58});r8pdfRodape(doc);doc.save('sanitizacao_'+obterData()+'.pdf');};
 
 function _corTipoLocalSanit(t){
     if(t==='instalacao') return {bar:[26,86,151], bg:[227,240,253], bd:[165,200,232]};
@@ -13103,7 +13191,7 @@ function _gerarPDFRastreioCompletoLote(f) {
 }
 
 window.gerarPDFRastreabilidadeVendas=function(){const{jsPDF}=window.jspdf;const doc=new jsPDF();r8pdfCabecalho(doc,'Rastreabilidade de Vendas','Consolidado PDV + TAPs');let vendas=[...(dadosERP.vendasPDV||[]).map(function(v){return{...v,destino:v.destino};}), ...(dadosERP.vendasTaps||[]).map(function(v){return{...v,destino:'TAPs Brewpub'};})];let linhas=vendas.map(function(v){return[formatarData(v.data),v.lote,v.estilo,(v.tipoEmbalagem||'—')+((v.embalagemCodigoUnidade||v.embalagemCodigo)?' ['+(v.embalagemCodigoUnidade||v.embalagemCodigo)+']':''),v.quantidade+' L',v.destino];});r8pdfAutoTable(doc,{head:[['Data','Lote','Estilo','Embalagem','Qtd','Destino']],body:linhas,startY:58});r8pdfRodape(doc);doc.save('rastreabilidade_'+obterData()+'.pdf');};
-window.gerarPDFFichasArquivadas=function(){const{jsPDF}=window.jspdf;const doc=new jsPDF();r8pdfCabecalho(doc,'Fichas Técnicas Arquivadas','Histórico de produções');let linhas=dadosERP.fichasTecnicas.map(function(f){return[f.lote,f.estilo,formatarData(f.dataProducao),(f.volume||'-')+' L',f.responsavel||'-',f.og||'-',f.fg||'-',(f.abv||'-')+'%'];});r8pdfAutoTable(doc,{head:[['Lote','Estilo','Data','Volume','Resp.','OG','FG','ABV']],body:linhas,startY:58});r8pdfRodape(doc);doc.save('fichas_'+obterData()+'.pdf');};
+window.gerarPDFFichasArquivadas=function(){const{jsPDF}=window.jspdf;const doc=new jsPDF();const periodo=window._r8RelPeriodo();const fichas=window._r8FiltrarPorPeriodo(dadosERP.fichasTecnicas,'dataProducao',periodo);r8pdfCabecalho(doc,'Fichas Técnicas Arquivadas',window._r8PeriodoSubtitulo(periodo,'Histórico de produções'));let linhas=fichas.map(function(f){return[f.lote,f.estilo,formatarData(f.dataProducao),(f.volume||'-')+' L',f.responsavel||'-',f.og||'-',f.fg||'-',(f.abv||'-')+'%'];});r8pdfAutoTable(doc,{head:[['Lote','Estilo','Data','Volume','Resp.','OG','FG','ABV']],body:linhas,startY:58});r8pdfRodape(doc);doc.save('fichas_'+obterData()+'.pdf');};
 window.gerarPDFERP=function(tipo){if(tipo==='custos'){const{jsPDF}=window.jspdf;const doc=new jsPDF();r8pdfCabecalho(doc,'Relatório de Custos','Análise de custos do estoque');let total=dadosERP.insumos.reduce(function(acc,i){return acc+(i.valorTotal||0);},0);doc.setFontSize(10);doc.setTextColor(44,24,16);doc.setFont('helvetica','bold');doc.text('Custo Total: R$ '+total.toFixed(2),14,52);let tipos={};dadosERP.insumos.forEach(function(i){tipos[i.tipo]=(tipos[i.tipo]||0)+(i.valorTotal||0);});let linhas=Object.entries(tipos).map(function(e){return[e[0],'R$ '+e[1].toFixed(2)];});r8pdfAutoTable(doc,{head:[['Tipo','Valor Total']],body:linhas,startY:58});r8pdfRodape(doc);doc.save('custos_'+obterData()+'.pdf');}};
 window.gerarPDFCadastro=function(tipo){const{jsPDF}=window.jspdf;const doc=new jsPDF();const tits={estilos:'Cadastro de Estilos',agua:'Cadastro de Perfis de Água',equipamentos:'Cadastro de Equipamentos',insumos:'Cadastro de Insumos',sais:'Cadastro de Sais',barris:'Cadastro de Embalagens p/ Envase',limpeza:'Cadastro de Mat. Higienização/Sanitização'};r8pdfCabecalho(doc,tits[tipo]||tipo,'Dados cadastrais');let rows=[],h=[];if(tipo==='estilos'){h=['Código','Nome'];(dadosERP.estilos||[]).forEach(function(e){rows.push([e.codigo,e.nome]);});}else if(tipo==='equipamentos'){h=['Código','Descrição','Tipo','Situação','Valor'];(dadosERP.equipamentos||[]).forEach(function(e){rows.push([e.codigo,e.descricao,e.tipo,e.situacao,e.valor?R8.formatarMoeda(e.valor):'—']);});}else if(tipo==='insumos'){h=['Código','Descrição','Tipo','Lote','Produtor','Fornecedor','Qtd','Valor'];(dadosERP.insumos||[]).forEach(function(i){rows.push([i.codigo,i.descricao,i.tipo,i.lote||'—',i.produtor||'—',i.fornecedor||'—',(i.qtd||0)+' '+(i.unidade||''),R8.formatarMoeda(i.valorTotal||0)]);});r8pdfAutoTable(doc,{head:[h],body:rows,startY:58,styles:{fontSize:7,cellPadding:2},columnStyles:{0:{cellWidth:16},1:{cellWidth:32},2:{cellWidth:16},3:{cellWidth:14},4:{cellWidth:26},5:{cellWidth:28},6:{cellWidth:22},7:{cellWidth:28}}});r8pdfRodape(doc);doc.save(tipo+'_'+obterData()+'.pdf');return;}else if(tipo==='sais'){h=['Código','Nome','Fabricante','Lote','Entrada(g)','Saldo Atual(g)','Valor'];(dadosERP.sais||[]).forEach(function(s){rows.push([s.codigo,s.nome,s.fabricante||'-',s.lote||'-',(s.qtd||0)+' g',_r8SaldoAgrupadoSal(s.codigo).toFixed(1)+' g',R8.formatarMoeda((s.qtd||0)*(s.valor||0))]);});}else if(tipo==='agua'){h=['Código','Origem','Fornecedor','Perfil','pH'];(dadosERP.aguas||[]).forEach(function(a){rows.push([a.codigo,a.origem||'-',a.fornecedor||'-',a.perfil||'-',a.ph||'-']);});}else if(tipo==='barris'){h=['Código','Tipo','Descrição','Capacidade','Valor','Observações'];(dadosERP.barris||[]).forEach(function(b){rows.push([b.codigo,b.tipo||'—',b.descricao||'—',b.capacidade||'—',b.valor?R8.formatarMoeda(b.valor):'—',b.observacoes||'—']);});}else if(tipo==='limpeza'){h=['Código','Tipo','Descrição','Lote','Fabricante','Qtd(L)','Valor','Validade'];(dadosERP.produtosLimpeza||[]).forEach(function(p){rows.push([p.codigo,p.tipo||'—',p.descricao||'—',p.lote||'—',p.fabricante||'—',(p.qtd||0)+' L',R8.formatarMoeda(p.valor||0),p.validade?formatarData(p.validade):'—']);});}r8pdfAutoTable(doc,{head:[h],body:rows,startY:58,
         didParseCell:function(data){
@@ -13130,19 +13218,24 @@ window.gerarPDFCadastro=function(tipo){const{jsPDF}=window.jspdf;const doc=new j
 window.gerarRelatorioMensalProducao = function() {
     const {jsPDF} = window.jspdf;
     const doc = new jsPDF();
+    var periodo = window._r8RelPeriodo();
     var hoje = new Date();
     var mesAtual = hoje.getFullYear() + '-' + String(hoje.getMonth()+1).padStart(2,'0');
     var nomeMes = hoje.toLocaleString('pt-BR', {month:'long', year:'numeric'});
+    var tituloRel = periodo.ativo ? 'Relatório de Produção' : 'Relatório Mensal de Produção';
+    var subRel = window._r8PeriodoSubtitulo(periodo, nomeMes.charAt(0).toUpperCase() + nomeMes.slice(1));
 
-    r8pdfCabecalho(doc, 'Relatório Mensal de Produção', nomeMes.charAt(0).toUpperCase() + nomeMes.slice(1));
+    r8pdfCabecalho(doc, tituloRel, subRel);
 
-    var fichas = (dadosERP.fichasTecnicas||[]).filter(function(f){
-        if (!f.dataProducao) return false;
-        return f.dataProducao.slice(0,7) === mesAtual;
-    });
+    var fichas = periodo.ativo
+        ? window._r8FiltrarPorPeriodo(dadosERP.fichasTecnicas, 'dataProducao', periodo)
+        : (dadosERP.fichasTecnicas||[]).filter(function(f){
+            if (!f.dataProducao) return false;
+            return f.dataProducao.slice(0,7) === mesAtual;
+        });
 
     doc.setFontSize(9); doc.setTextColor(80);
-    doc.text('Total de lotes no mês: ' + fichas.length, 14, 52);
+    doc.text('Total de lotes no período: ' + fichas.length, 14, 52);
 
     if (fichas.length) {
         // Volume total envasado
@@ -13163,10 +13256,10 @@ window.gerarRelatorioMensalProducao = function() {
         });
         r8pdfAutoTable(doc,{head:[['Lote','Estilo','Data','Volume','OG','FG','ABV']], body:rows, startY:80});
     } else {
-        doc.text('Nenhum lote registrado neste mês.', 14, 60);
+        doc.text('Nenhum lote registrado no período.', 14, 60);
     }
     r8pdfRodape(doc);
-    doc.save('relatorio_mensal_' + mesAtual + '.pdf');
+    doc.save('relatorio_producao_' + (periodo.ativo ? (periodo.de||'inicio')+'_a_'+(periodo.ate||'fim') : mesAtual) + '.pdf');
 };
 window.gerarPDFMovimentacoes = window.gerarPDFMovimentacoesEstoque;
 
@@ -18190,7 +18283,7 @@ if(document.readyState === 'loading'){
             <div style="flex:1;min-width:0">
                 <div style="font-weight:700;font-size:13px;color:#2c1810">Fichas Técnicas Arquivadas</div>
                 <div style="font-size:12px;color:#888;margin-top:2px">Histórico completo de todas as produções — lote, estilo, OG, FG, ABV.</div>
-                <button class="rel-btn" style="background:#c49a2b;color:#fff" onclick="gerarPDFFichasArquivadas()"><i class="fas fa-file-pdf"></i> Gerar PDF</button>
+                <button class="rel-btn" style="background:#c49a2b;color:#fff" onclick="window._r8GerarComPeriodo('Fichas Técnicas Arquivadas', gerarPDFFichasArquivadas)"><i class="fas fa-file-pdf"></i> Gerar PDF</button>
             </div>
         </div>
 
@@ -18199,7 +18292,7 @@ if(document.readyState === 'loading'){
             <div style="flex:1;min-width:0">
                 <div style="font-weight:700;font-size:13px;color:#2c1810">Relatório Mensal de Produção</div>
                 <div style="font-size:12px;color:#888;margin-top:2px">Lotes iniciados, volumes e estilos fabricados no mês.</div>
-                <button class="rel-btn" style="background:#3b82f6;color:#fff" onclick="gerarRelatorioMensalProducao()"><i class="fas fa-file-pdf"></i> Gerar PDF</button>
+                <button class="rel-btn" style="background:#3b82f6;color:#fff" onclick="window._r8GerarComPeriodo('Relatório de Produção', gerarRelatorioMensalProducao)"><i class="fas fa-file-pdf"></i> Gerar PDF</button>
             </div>
         </div>
 
@@ -18229,7 +18322,7 @@ if(document.readyState === 'loading'){
             <div style="flex:1;min-width:0">
                 <div style="font-weight:700;font-size:13px;color:#2c1810">Movimentações de Estoque</div>
                 <div style="font-size:12px;color:#888;margin-top:2px">Histórico completo de entradas e saídas de insumos e produtos.</div>
-                <button class="rel-btn" style="background:#8b5cf6;color:#fff" onclick="gerarPDFMovimentacoes()"><i class="fas fa-file-pdf"></i> Gerar PDF</button>
+                <button class="rel-btn" style="background:#8b5cf6;color:#fff" onclick="window._r8GerarComPeriodo('Movimentações de Estoque', gerarPDFMovimentacoes)"><i class="fas fa-file-pdf"></i> Gerar PDF</button>
             </div>
         </div>
 
@@ -18237,25 +18330,28 @@ if(document.readyState === 'loading'){
         <div style="font-size:10px;font-weight:700;color:#2c1810;text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 8px">🛒 Vendas</div>
 
         <div class="rel-card">
-            <div class="rel-ico" style="background:#f0fdf4"><i class="fas fa-store" style="color:#16a34a"></i></div>
+            <div class="rel-ico" style="background:#dcfce7"><i class="fas fa-sack-dollar" style="color:#15803d"></i></div>
             <div style="flex:1;min-width:0">
-                <div style="font-weight:700;font-size:13px;color:#2c1810">Vendas PDV</div>
-                <div style="font-size:12px;color:#888;margin-top:2px">Registro de saídas para pontos de venda.</div>
+                <div style="font-weight:700;font-size:13px;color:#2c1810">Vendas</div>
+                <div style="font-size:12px;color:#888;margin-top:2px">Todas as vendas num único relatório, não importa o canal — PDV, TAPs Brewpub ou outros recebimentos — com valor, pagamento e status.</div>
                 <div style="display:flex;gap:8px;flex-wrap:wrap">
-                    <button class="rel-btn" style="background:#16a34a;color:#fff" onclick="gerarPDFVendasPDV()"><i class="fas fa-file-pdf"></i> PDF</button>
-                    <button class="rel-btn" style="background:#f1f5f9;color:#475569" onclick="exportarCSVVendasPDV()"><i class="fas fa-file-csv"></i> CSV</button>
+                    <button class="rel-btn" style="background:#15803d;color:#fff" onclick="window._r8GerarComPeriodo('Vendas', gerarRelatorioPDFVendas)"><i class="fas fa-file-pdf"></i> PDF</button>
+                    <button class="rel-btn" style="background:#f1f5f9;color:#475569" onclick="window._r8GerarComPeriodo('Vendas', exportarCSVVendas)"><i class="fas fa-file-csv"></i> CSV</button>
                 </div>
             </div>
         </div>
 
+        <!-- Financeiro -->
+        <div style="font-size:10px;font-weight:700;color:#2c1810;text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 8px">💰 Compras</div>
+
         <div class="rel-card">
-            <div class="rel-ico" style="background:#fef3c7"><i class="fas fa-beer" style="color:#d97706"></i></div>
+            <div class="rel-ico" style="background:#ffedd5"><i class="fas fa-cart-shopping" style="color:#c2410c"></i></div>
             <div style="flex:1;min-width:0">
-                <div style="font-weight:700;font-size:13px;color:#2c1810">Vendas TAPs Brewpub</div>
-                <div style="font-size:12px;color:#888;margin-top:2px">Consumo nas torneiras do estabelecimento.</div>
+                <div style="font-weight:700;font-size:13px;color:#2c1810">Compras</div>
+                <div style="font-size:12px;color:#888;margin-top:2px">Lançamentos de compra, com fornecedor, NF e status de pagamento.</div>
                 <div style="display:flex;gap:8px;flex-wrap:wrap">
-                    <button class="rel-btn" style="background:#d97706;color:#fff" onclick="gerarPDFVendasTAP()"><i class="fas fa-file-pdf"></i> PDF</button>
-                    <button class="rel-btn" style="background:#f1f5f9;color:#475569" onclick="exportarCSVVendasTAP()"><i class="fas fa-file-csv"></i> CSV</button>
+                    <button class="rel-btn" style="background:#c2410c;color:#fff" onclick="window._r8GerarComPeriodo('Compras', gerarRelatorioPDFCompras)"><i class="fas fa-file-pdf"></i> PDF</button>
+                    <button class="rel-btn" style="background:#f1f5f9;color:#475569" onclick="window._r8GerarComPeriodo('Compras', exportarCSVCompras)"><i class="fas fa-file-csv"></i> CSV</button>
                 </div>
             </div>
         </div>
@@ -18268,7 +18364,7 @@ if(document.readyState === 'loading'){
             <div style="flex:1;min-width:0">
                 <div style="font-weight:700;font-size:13px;color:#2c1810">Registros de Sanitização</div>
                 <div style="font-size:12px;color:#888;margin-top:2px">Histórico completo por equipamento — conformidade e BPF.</div>
-                <button class="rel-btn" style="background:#10b981;color:#fff" onclick="gerarPDFSanitizacao()"><i class="fas fa-file-pdf"></i> Gerar PDF</button>
+                <button class="rel-btn" style="background:#10b981;color:#fff" onclick="window._r8GerarComPeriodo('Registros de Sanitização', gerarPDFSanitizacao)"><i class="fas fa-file-pdf"></i> Gerar PDF</button>
             </div>
         </div>
 
@@ -19636,26 +19732,34 @@ function salvarEdicaoCompra(id){
   showToast('Compra atualizada!','ok');
 }
 
-function exportarCSVCompras(){
+function _r8ComprasDoPeriodo(){
+  const periodo = window._r8RelPeriodo ? window._r8RelPeriodo() : null;
+  if (periodo && periodo.ativo) {
+    return { lst: window._r8FiltrarPorPeriodo(getCompras(), 'data', periodo).slice().sort((a,b)=>a.data.localeCompare(b.data)), label: window._r8PeriodoSubtitulo(periodo), arquivo: (periodo.de||'inicio')+'_a_'+(periodo.ate||'fim') };
+  }
   const m=mesAtual();
-  const lst=filtrarMes(getCompras(),m.ano,m.mes).slice().sort((a,b)=>a.data.localeCompare(b.data));
-  if(!lst.length){showToast('Nada para exportar neste mês.','err');return;}
+  return { lst: filtrarMes(getCompras(),m.ano,m.mes).slice().sort((a,b)=>a.data.localeCompare(b.data)), label: 'Relatório de Compras — '+mesLabel(m.ano,m.mes), arquivo: mesLabelCurto(m.ano,m.mes) };
+}
+function exportarCSVCompras(){
+  const r=_r8ComprasDoPeriodo();
+  const lst=r.lst;
+  if(!lst.length){showToast('Nada para exportar neste período.','err');return;}
   const linhas=lst.map(c=>[dataLabel(c.data),c.secao,c.fornecedor,c.numeroNF||'',c.cnpjFornecedor||'',c.tipo,c.descricao,c.unidade,c.quantidade,c.valorUn,c.total,c.pagamento,c.vencimento?dataLabel(c.vencimento):'',c.statusPag]);
-  baixarCSV('rota8-compras-'+mesLabelCurto(m.ano,m.mes)+'.csv',
+  baixarCSV('rota8-compras-'+r.arquivo+'.csv',
     ['Data','Seção','Fornecedor','Nº NF','CNPJ','Tipo','Descrição','Unidade','Quantidade','Valor Unit.','Total','Pagamento','Vencimento','Status'],
     linhas);
 }
 
 function gerarRelatorioPDFCompras(){
-  const m=mesAtual();
-  const lst=filtrarMes(getCompras(),m.ano,m.mes).slice().sort((a,b)=>a.data.localeCompare(b.data));
-  if(!lst.length){showToast('Nada para gerar neste mês.','err');return;}
+  const r=_r8ComprasDoPeriodo();
+  const lst=r.lst;
+  if(!lst.length){showToast('Nada para gerar neste período.','err');return;}
   const doc=new jspdf.jsPDF();
   doc.addImage(LOGO_B64,'PNG',14,10,18,18);
   doc.setFontSize(14);doc.setFont(undefined,'bold');
   doc.text('Rota 8 Cervejaria',36,17);
   doc.setFontSize(10);doc.setFont(undefined,'normal');
-  doc.text('Relatório de Compras — '+mesLabel(m.ano,m.mes),36,23);
+  doc.text(r.label,36,23);
   doc.setFontSize(8);doc.setTextColor(120);
   doc.text('Gerado em '+new Date().toLocaleString('pt-BR'),36,28);
   doc.setTextColor(0);
@@ -19680,7 +19784,7 @@ function gerarRelatorioPDFCompras(){
   doc.setFontSize(10);doc.setFont(undefined,'bold');
   doc.text('Total: '+fmtBRL(total),14,finalY+8);
 
-  doc.save('rota8-compras-'+mesLabelCurto(m.ano,m.mes)+'.pdf');
+  doc.save('rota8-compras-'+r.arquivo+'.pdf');
   showToast('Relatório PDF gerado!','ok');
 }
 
@@ -20151,26 +20255,34 @@ function renderHistVendas(){
   }).join('');
 }
 
-function exportarCSVVendas(){
+function _r8VendasDoPeriodo(){
+  const periodo = window._r8RelPeriodo ? window._r8RelPeriodo() : null;
+  if (periodo && periodo.ativo) {
+    return { lst: window._r8FiltrarPorPeriodo(getVendas(), 'data', periodo).slice().sort((a,b)=>a.data.localeCompare(b.data)), label: window._r8PeriodoSubtitulo(periodo), arquivo: (periodo.de||'inicio')+'_a_'+(periodo.ate||'fim') };
+  }
   const m=mesAtual();
-  const lst=filtrarMes(getVendas(),m.ano,m.mes).slice().sort((a,b)=>a.data.localeCompare(b.data));
-  if(!lst.length){showToast('Nada para exportar neste mês.','err');return;}
+  return { lst: filtrarMes(getVendas(),m.ano,m.mes).slice().sort((a,b)=>a.data.localeCompare(b.data)), label: 'Relatório de Vendas — '+mesLabel(m.ano,m.mes), arquivo: mesLabelCurto(m.ano,m.mes) };
+}
+function exportarCSVVendas(){
+  const r=_r8VendasDoPeriodo();
+  const lst=r.lst;
+  if(!lst.length){showToast('Nada para exportar neste período.','err');return;}
   const linhas=lst.map(v=>[dataLabel(v.data),v.tipo||'',v.descricao||'',v.valor,v.pagamento||'',v.status]);
-  baixarCSV('rota8-vendas-'+mesLabelCurto(m.ano,m.mes)+'.csv',
+  baixarCSV('rota8-vendas-'+r.arquivo+'.csv',
     ['Data','Tipo','Descrição','Valor','Meio Recebimento','Status'],
     linhas);
 }
 
 function gerarRelatorioPDFVendas(){
-  const m=mesAtual();
-  const lst=filtrarMes(getVendas(),m.ano,m.mes).slice().sort((a,b)=>a.data.localeCompare(b.data));
-  if(!lst.length){showToast('Nada para gerar neste mês.','err');return;}
+  const r=_r8VendasDoPeriodo();
+  const lst=r.lst;
+  if(!lst.length){showToast('Nada para gerar neste período.','err');return;}
   const doc=new jspdf.jsPDF();
   doc.addImage(LOGO_B64,'PNG',14,10,18,18);
   doc.setFontSize(14);doc.setFont(undefined,'bold');
   doc.text('Rota 8 Cervejaria',36,17);
   doc.setFontSize(10);doc.setFont(undefined,'normal');
-  doc.text('Relatório de Vendas — '+mesLabel(m.ano,m.mes),36,23);
+  doc.text(r.label,36,23);
   doc.setFontSize(8);doc.setTextColor(120);
   doc.text('Gerado em '+new Date().toLocaleString('pt-BR'),36,28);
   doc.setTextColor(0);
@@ -20196,7 +20308,7 @@ function gerarRelatorioPDFVendas(){
   doc.setFontSize(10);doc.setFont(undefined,'bold');
   doc.text('Total: '+fmtBRL(total),14,finalY+8);
 
-  doc.save('rota8-vendas-'+mesLabelCurto(m.ano,m.mes)+'.pdf');
+  doc.save('rota8-vendas-'+r.arquivo+'.pdf');
   showToast('Relatório PDF gerado!','ok');
 }
 
@@ -20752,10 +20864,21 @@ function closeModal(){document.getElementById('modal').classList.remove('show');
 // ════ TOAST ════
 let toastTmr=null;
 function showToast(msg,tipo){
+  // O elemento #toast vive dentro de #telaFinanceiro. Quando esta função é
+  // chamada a partir de uma tela fora do módulo Financeiro (ex.: os botões
+  // de relatório de Compras/Vendas no Bloco Relatórios), #telaFinanceiro
+  // está com display:none e o toast nunca apareceria — o PDF/CSV seria
+  // gerado normalmente, mas o aviso de sucesso/erro ficaria invisível.
+  // Nesse caso, cai no toast padrão do sistema (R8.toast), que funciona em
+  // qualquer tela.
   const t=document.getElementById('toast');
-  t.textContent=msg;t.className='toast '+(tipo||'ok')+' show';
-  clearTimeout(toastTmr);
-  toastTmr=setTimeout(()=>t.classList.remove('show'),3000);
+  if (t && t.offsetParent !== null) {
+    t.textContent=msg;t.className='toast '+(tipo||'ok')+' show';
+    clearTimeout(toastTmr);
+    toastTmr=setTimeout(()=>t.classList.remove('show'),3000);
+  } else if (window.R8 && R8.toast) {
+    (tipo==='err' ? R8.toast.erro : R8.toast.ok)(msg);
+  }
 }
 
 // ════ INIT ════
