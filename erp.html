@@ -26,7 +26,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-10-10-3';
+    window.R8_BUILD = '2026-10-11-1';
     (function() {
         var buildVisto = null;
         try { buildVisto = localStorage.getItem('r8_build_visto'); } catch(e){}
@@ -18365,21 +18365,6 @@ if(document.readyState === 'loading'){
                 <div style="font-weight:700;font-size:13px;color:#2c1810">Registros de Sanitização</div>
                 <div style="font-size:12px;color:#888;margin-top:2px">Histórico completo por equipamento — conformidade e BPF.</div>
                 <button class="rel-btn" style="background:#10b981;color:#fff" onclick="window._r8GerarComPeriodo('Registros de Sanitização', gerarPDFSanitizacao)"><i class="fas fa-file-pdf"></i> Gerar PDF</button>
-            </div>
-        </div>
-
-        <!-- Backup -->
-        <div style="font-size:10px;font-weight:700;color:#2c1810;text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 8px">💾 Backup de Dados</div>
-
-        <div class="rel-card">
-            <div class="rel-ico" style="background:#f1f5f9"><i class="fas fa-database" style="color:#64748b"></i></div>
-            <div style="flex:1;min-width:0">
-                <div style="font-weight:700;font-size:13px;color:#2c1810">Exportação Completa (JSON)</div>
-                <div style="font-size:12px;color:#888;margin-top:2px">Todos os dados do sistema em um único arquivo JSON com timestamp.</div>
-                <div style="display:flex;gap:8px;flex-wrap:wrap">
-                    <button class="rel-btn" style="background:#475569;color:#fff" onclick="exportarBackupJSON()"><i class="fas fa-download"></i> Download JSON</button>
-                    <button class="rel-btn" style="background:#f1f5f9;color:#475569" onclick="importarBackupJSON()"><i class="fas fa-upload"></i> Restaurar</button>
-                </div>
             </div>
         </div>
     </div>
