@@ -26,7 +26,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-10-18-2';
+    window.R8_BUILD = '2026-10-18-3';
     (function() {
         var buildVisto = null;
         try { buildVisto = localStorage.getItem('r8_build_visto'); } catch(e){}
@@ -1002,6 +1002,7 @@
             box-shadow: 0 2px 10px rgba(44,24,16,0.07);
             display: grid;
             grid-template-areas:
+                "nome   nome"
                 "titulo titulo"
                 "dados  acoes"
                 "dados  icones"
@@ -1009,6 +1010,20 @@
             grid-template-columns: 1fr auto;
             gap: 0 12px;
         }
+        .ficha-arq-nome {
+            grid-area: nome;
+            text-align: center;
+            font-family: 'Bebas Neue', 'Oswald', sans-serif;
+            font-size: 28px;
+            font-weight: 400;
+            line-height: 1.1;
+            color: #9a741a;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            overflow-wrap: anywhere;
+        }
+        .ficha-arq-nome:empty { display: none; }
         .ficha-arq-titulo {
             grid-area: titulo;
             font-size: 17px;
@@ -9210,6 +9225,8 @@ window.atualizarListaFichasERP = function() {
         var ico = _iconeStatus[sk] || '📋';
         var statusBadge = '<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:'+st.cor+';background:'+st.bg+';border:1.5px solid '+st.borda+';border-radius:20px;padding:3px 10px;white-space:nowrap">'+ico+' '+st.label+'</span>';
         return '<div class="ficha-arq-card">'
+            // Nome da cerveja (somente o nome), centralizado no topo do card
+            + (window._nomeCervejaFicha(f) ? '<div class="ficha-arq-nome">'+R8.esc(window._nomeCervejaFicha(f))+'</div>' : '')
             // Título: Estilo
             + '<div class="ficha-arq-titulo">'+R8.esc(f.estilo||'—')+'</div>'
             // Lote / Data / Vol
@@ -13277,6 +13294,7 @@ window.gerarPDFFichaAtual = function() {
     if(lote==='-'||!lote){R8.toast.aviso('Preencha o número do lote.');return;}
     let f={
         lote:lote,
+        nome:(document.getElementById('producaoNome')?.value||'').trim(),
         estilo:document.getElementById('producaoEstilo')?.value||'-',
         dataProducao:document.getElementById('producaoData')?.value||'-',
         responsavel:document.getElementById('producaoResponsavel')?.value||'-',
@@ -13352,6 +13370,12 @@ function pdfCabecalhoPadrao(doc, titulo, subtitulo) {
 }
 
 window._logoBase64=window._logoBase64||R8_LOGO_FULL;
+// Nome da cerveja da ficha: usa f.nome; se estiver vazio, tenta o nome da receita XML gravada na ficha (Brew Beer)
+window._nomeCervejaFicha=function(f){
+    var n=((f&&f.nome)||'').trim();
+    if(!n&&f&&f.receitaXML){var m=String(f.receitaXML).match(/<RECIPE>\s*<NAME>([\s\S]*?)<\/NAME>/i);if(m)n=m[1].replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').trim();}
+    return n;
+};
 function gerarPDFFichaLayout(f,filename){
     const{jsPDF}=window.jspdf;
     const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
@@ -13453,7 +13477,13 @@ function gerarPDFFichaLayout(f,filename){
         var imgData=window._logoBase64;
         if(imgData)doc.addImage(imgData,'PNG',mL,2,22,20.27);
     }catch(e){}
-    doc.setTextColor(...TXT);doc.setFontSize(12);doc.setFont('helvetica','bold');doc.text('ROTA 8 CERVEJARIA',38,9);
+    doc.setTextColor(...TXT);doc.setFont('helvetica','bold');
+    {   // Nome da cerveja (somente o nome) no lugar do texto fixo; se a ficha não tiver nome, mantém ROTA 8 CERVEJARIA
+        var _nomeCerv=(window._nomeCervejaFicha(f)||'ROTA 8 CERVEJARIA').toUpperCase(),_fsN=12;
+        doc.setFontSize(_fsN);
+        while(_fsN>7&&doc.getTextWidth(_nomeCerv)>88){_fsN-=0.5;doc.setFontSize(_fsN);}
+        doc.text(_nomeCerv,82,9,{align:'center'}); // centralizado na área do cabeçalho (entre o logo e o quadro de Lote)
+    }
     doc.setTextColor(...TXT);doc.setFontSize(18);doc.setFont('helvetica','bold');doc.text((f.estilo||'SEM ESTILO').toUpperCase(),38,20);
     doc.setTextColor(...TXT);doc.setFontSize(10.5);doc.setFont('helvetica','bold');doc.text('FICHA TÉCNICA DE PRODUÇÃO',38,26);
     // Bloco info direito
