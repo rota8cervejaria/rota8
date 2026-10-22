@@ -14042,7 +14042,11 @@ function gerarPDFFichaLayout(f,filename){
         doc.text('Lote: '+(f.lote||'—')+'  |  Emitido: '+hoje+'  |  Pág. '+pg+'/'+totalPags,W-mR,H-4.5,{align:'right'});
     }
 
-    doc.save(filename);
+    // Nome único a cada geração (data+hora): evita que o navegador/celular reabra um PDF
+    // antigo de mesmo nome (ex.: pergunta "Baixar o arquivo novamente?") em vez do novo.
+    var _agora=new Date(),_p2=function(n){return('0'+n).slice(-2);};
+    var _carimbo=_agora.getFullYear()+_p2(_agora.getMonth()+1)+_p2(_agora.getDate())+'_'+_p2(_agora.getHours())+_p2(_agora.getMinutes())+_p2(_agora.getSeconds());
+    doc.save(String(filename).replace(/\.pdf$/i,'')+'_'+_carimbo+'.pdf');
 }
 
 window.gerarPDFFichaLayout=gerarPDFFichaLayout;
