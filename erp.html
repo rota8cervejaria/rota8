@@ -13425,7 +13425,7 @@ function gerarPDFFichaLayout(f,filename){
     // Insumos Utilizados (largura total)
     const _fixoInsumos=SECTIT;
     const _varInsumos=BASE_LHH+Math.max(_insCount,1)*BASE_LH+BASE_GAP;
-    // Mosturação / Perfil Sensorial (lado a lado): o quadro de Perfil Sensorial tem altura
+    // Mosturação / Curva de Fermentação (lado a lado): o quadro da Curva de Fermentação tem altura
     // mínima de 28mm que não compacta — tratado como bloco fixo para não subestimar o espaço real
     const _fixoMost=30;
     // Lúpulos (largura total)
@@ -13435,7 +13435,16 @@ function gerarPDFFichaLayout(f,filename){
     const _fixoEnv=SECTIT;
     const _varEnv=BASE_LHH+Math.max(_envs0.length,1)*BASE_LH+(_envs0.length?BASE_LH:0);
 
-    const FIXO=_fixoTopo+_fixoInsumos+_fixoMost+_fixoLup+_fixoEnv;
+    // Anotações Técnicas (largura total, ao final da ficha): altura fixa conforme o texto (máx. 6 linhas)
+    const _anotTxt0=(f.anotacoes||'').toString().trim();
+    const _ANOT_MAXL=6,_ANOT_LH=3.4;
+    let _anotLinhas=[];
+    if(_anotTxt0){doc.setFontSize(7);doc.setFont('helvetica','normal');_anotLinhas=doc.splitTextToSize(_anotTxt0,cW-2.5-5.5-4);}
+    const _anotNL=Math.min(_anotLinhas.length,_ANOT_MAXL);
+    const _anotBodyH=_anotNL?(3+_anotNL*_ANOT_LH+1.5):0;
+    const _fixoAnot=_anotNL?(SECTIT+_anotBodyH+BASE_GAP):0;
+
+    const FIXO=_fixoTopo+_fixoInsumos+_fixoMost+_fixoLup+_fixoEnv+_fixoAnot;
     const VARIAVEL=_varTopo+_varInsumos+_varLup+_varEnv;
     const _PB_CALC=H-22; // mesmo limite (RODAPE_H=22) usado mais abaixo para decidir quebras de página
     const _LOOKAHEAD=20; // maior margem de segurança usada pelas checagens de quebra de página abaixo
@@ -13805,7 +13814,7 @@ function gerarPDFFichaLayout(f,filename){
     cardBorda(C1X,insumoCardStartY,cW,yy-insumoCardStartY);
     yBot=yy+GAP;
 
-    // ══ MOSTURAÇÃO + PERFIL SENSORIAL (lado a lado) ══
+    // ══ MOSTURAÇÃO + CURVA DE FERMENTAÇÃO (lado a lado) ══
     if(yBot+20>PAGE_BOTTOM){ doc.addPage(); yBot=10; }
     let yMostStart=yBot;
     cardY=yBot;
@@ -13831,65 +13840,83 @@ function gerarPDFFichaLayout(f,filename){
     let yMostEnd=yy;
     cardBorda(C1X,cardY,C1W,yMostEnd-cardY);
 
-    // CARACTERÍSTICAS E PERFIL SENSORIAL
+    // CURVA DE FERMENTAÇÃO (gráfico vetorial no mesmo espaço, ao lado da Mosturação)
     let anotCardY=yMostStart;
-    let ya=secTit('Características e Perfil Sensorial',anotCardY,[50,55,65],C2X,C2W);
+    let ya=secTit('Curva de Fermentação',anotCardY,[50,55,65],C2X,C2W);
     let anotH=Math.max(yMostEnd-ya,28);
-    bloco(C2X,ya,C2W,anotH,250,252,245,null);
-    doc.setFillColor(...D);doc.setDrawColor(...D);doc.rect(C2X,ya,2.5,anotH,'FD');
-    var _estiloInfo=window._buscarEstiloInfo?window._buscarEstiloInfo(f.estilo||''):null;
-    var _textoCaract='';
-    if(f.caracteristicasPersonalizadas&&f.caracteristicasPersonalizadas.trim()){
-        // Descrição específica deste lote (preenchida no Processo de
-        // Produção) — usada no lugar da descrição padrão do estilo,
-        // exatamente como está, sem reformatação.
-        _textoCaract=f.caracteristicasPersonalizadas.trim();
-    }else if(_estiloInfo){
-        function _ap(s){s=(s||'').trim();return(s&&!/[.!?]$/.test(s))?s+'.':s;}
-        function _frases(txt){return((txt||'').match(/[^.!?]+[.!?]+/g)||[]).map(function(f){return _ap(f);}).filter(function(f){return f.trim();});}
-        var _fc=_frases(_estiloInfo.caracteristicas);
-        var _fs=_frases(_estiloInfo.sensorial);
-        var _fTodas=_fc.concat(_fs);
-        if(!_fTodas.length)_textoCaract=_ap(_estiloInfo.caracteristicas||_estiloInfo.sensorial||'');
-        else if(_fTodas.length<=2)_textoCaract=_fTodas.join(' ');
-        else{
-            var _partes=[_fc.length>0?_fc[0]:_fs[0]];
-            _fc.slice(1).forEach(function(f){_partes.push(f);});
-            _fs.forEach(function(f,i){if(i!==Math.floor((_fs.length-1)/2)&&i!==_fs.length-1)_partes.push(f);});
-            var _mei=_fs.length>0?_fs[Math.floor((_fs.length-1)/2)]:_fTodas[Math.floor((_fTodas.length-1)/2)];
-            var _fim=_fs.length>0?_fs[_fs.length-1]:_fTodas[_fTodas.length-1];
-            if(_mei!==_partes[0])_partes.push(_mei);
-            if(_fim!==_mei&&_fim!==_partes[0])_partes.push(_fim);
-            _textoCaract=_partes.join(' ');
+    bloco(C2X,ya,C2W,anotH,250,252,252,null);
+    (function(){
+        var pts=(f.fermentacao||[]).map(function(m){
+            var t=new Date(m.dataHora).getTime();
+            return {t:isNaN(t)?null:t,d:parseFloat(m.densidade),c:parseFloat(m.temp)};
+        }).filter(function(p){return isFinite(p.d)&&p.d>0;});
+        if(pts.length<2){
+            doc.setTextColor(150,155,165);doc.setFontSize(7);doc.setFont('helvetica','italic');
+            doc.text('Registre ao menos 2 medições',C2X+C2W/2,ya+anotH/2-1,{align:'center'});
+            doc.text('de densidade para gerar a curva.',C2X+C2W/2,ya+anotH/2+2.5,{align:'center'});
+            return;
         }
-    }
-    if(!_textoCaract&&f.anotacoes)_textoCaract=f.anotacoes;
-    if(_textoCaract&&_textoCaract.trim()){
-        doc.setTextColor(20,25,40);doc.setFontSize(7);doc.setFont('helvetica','normal');
-        var _padL=5.5,_padR=4,_padT=5,_padB=4;
-        var _xIni=C2X+2.5+_padL,_maxW=C2W-2.5-_padL-_padR;
-        var _altUtil=anotH-_padT-_padB;
-        var _linhas=doc.splitTextToSize(_textoCaract,_maxW);
-        var _lh=_linhas.length>1?(_altUtil/(_linhas.length-1)):_altUtil;
-        _lh=Math.min(Math.max(_lh,3.5),7.5);
-        _linhas.forEach(function(l,i){
-            var _yLinha=ya+_padT+i*_lh;
-            if(_yLinha>ya+anotH-1)return;
-            var _isUltima=(i===_linhas.length-1);
-            if(_isUltima||l.trim()===''){doc.text(l.trim(),_xIni,_yLinha);}
-            else{
-                var palavras=l.trim().split(' ').filter(function(p){return p!=='';});
-                if(palavras.length<=1){doc.text(l.trim(),_xIni,_yLinha);return;}
-                var largTotal=doc.getTextWidth(palavras.join(''));
-                var espacoEntre=(_maxW-largTotal)/(palavras.length-1);
-                var _xp=_xIni;
-                palavras.forEach(function(p){doc.text(p,_xp,_yLinha);_xp+=doc.getTextWidth(p)+espacoEntre;});
-            }
-        });
-    }else{
-        doc.setTextColor(190,195,200);doc.setFontSize(7.5);doc.setFont('helvetica','italic');
-        doc.text('Características do estilo...',C2X+C2W/2,ya+12,{align:'center'});
-    }
+        var usaT=pts.every(function(p){return p.t!==null;});
+        if(usaT)pts.sort(function(a,b){return a.t-b.t;});
+        var tMin=usaT?pts[0].t:0,tMax=usaT?pts[pts.length-1].t:pts.length-1;
+        if(!(tMax>tMin)){usaT=false;tMin=0;tMax=pts.length-1;}
+        var ptsC=pts.filter(function(p){return isFinite(p.c);});
+        var temT=ptsC.length>=2;
+        var px0=C2X+11,px1=C2X+C2W-(temT?10:4),py0=ya+7,py1=ya+anotH-6.5;
+        var dMin=Math.min.apply(null,pts.map(function(p){return p.d;})),dMax=Math.max.apply(null,pts.map(function(p){return p.d;}));
+        if(dMax-dMin<0.002){dMin-=0.002;dMax+=0.002;}
+        var dPad=(dMax-dMin)*0.08;dMin-=dPad;dMax+=dPad;
+        var cMin=0,cMax=1;
+        if(temT){
+            cMin=Math.min.apply(null,ptsC.map(function(p){return p.c;}));cMax=Math.max.apply(null,ptsC.map(function(p){return p.c;}));
+            if(cMax-cMin<2){cMin-=1;cMax+=1;}
+            var cPad=(cMax-cMin)*0.08;cMin-=cPad;cMax+=cPad;
+        }
+        var fX=function(p,i){return px0+((usaT?(p.t-tMin):i)/(tMax-tMin))*(px1-px0);};
+        var fYd=function(v){return py1-((v-dMin)/(dMax-dMin))*(py1-py0);};
+        var fYc=function(v){return py1-((v-cMin)/(cMax-cMin))*(py1-py0);};
+        var OURO=[196,154,43],AZ=[59,130,246];
+        // grade + rótulos dos eixos
+        doc.setLineWidth(0.15);doc.setFontSize(5.5);doc.setFont('helvetica','normal');
+        for(var gi=0;gi<=3;gi++){
+            var gy=py1-(py1-py0)*gi/3;
+            doc.setDrawColor(215,220,225);doc.line(px0,gy,px1,gy);
+            doc.setTextColor(150,115,25);doc.text((dMin+(dMax-dMin)*gi/3).toFixed(3),px0-1,gy+0.6,{align:'right'});
+            if(temT){doc.setTextColor(40,100,200);doc.text((cMin+(cMax-cMin)*gi/3).toFixed((cMax-cMin)<6?1:0),px1+1,gy+0.6);}
+        }
+        doc.setDrawColor(190,195,205);doc.line(px0,py0,px0,py1);doc.line(px0,py1,px1,py1);
+        // rótulos do eixo X (datas ou nº da medição)
+        var lblX=function(t){var d=new Date(t);return ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2);};
+        doc.setTextColor(90,95,105);
+        if(usaT){
+            doc.text(lblX(tMin),px0,py1+3.2);
+            if(lblX((tMin+tMax)/2)!==lblX(tMin)&&lblX((tMin+tMax)/2)!==lblX(tMax))doc.text(lblX((tMin+tMax)/2),(px0+px1)/2,py1+3.2,{align:'center'});
+            doc.text(lblX(tMax),px1,py1+3.2,{align:'right'});
+        }else{
+            doc.text('Med. 1',px0,py1+3.2);doc.text('Med. '+pts.length,px1,py1+3.2,{align:'right'});
+        }
+        // linha de temperatura (tracejada)
+        if(temT){
+            doc.setDrawColor(...AZ);doc.setFillColor(...AZ);doc.setLineWidth(0.35);doc.setLineDashPattern([1.2,0.9],0);
+            var ant=null;
+            pts.forEach(function(p,i){if(!isFinite(p.c))return;var x=fX(p,i),y=fYc(p.c);if(ant)doc.line(ant[0],ant[1],x,y);ant=[x,y];});
+            doc.setLineDashPattern([],0);
+            pts.forEach(function(p,i){if(isFinite(p.c))doc.circle(fX(p,i),fYc(p.c),0.4,'F');});
+        }
+        // linha de densidade
+        doc.setDrawColor(...OURO);doc.setFillColor(...OURO);doc.setLineWidth(0.5);
+        for(var k=1;k<pts.length;k++)doc.line(fX(pts[k-1],k-1),fYd(pts[k-1].d),fX(pts[k],k),fYd(pts[k].d));
+        pts.forEach(function(p,i){doc.circle(fX(p,i),fYd(p.d),0.6,'F');});
+        // legenda
+        doc.setFontSize(5.5);doc.setFont('helvetica','bold');
+        doc.setDrawColor(...OURO);doc.setLineWidth(0.5);doc.line(C2X+3,ya+3.2,C2X+7,ya+3.2);
+        doc.setTextColor(150,115,25);doc.text('Densidade (SG)',C2X+8,ya+3.9);
+        if(temT){
+            doc.setDrawColor(...AZ);doc.setLineWidth(0.35);doc.setLineDashPattern([1.2,0.9],0);doc.line(C2X+30,ya+3.2,C2X+34,ya+3.2);doc.setLineDashPattern([],0);
+            doc.setTextColor(40,100,200);doc.text('Temp (°C)',C2X+35,ya+3.9);
+        }
+        doc.setLineWidth(0.0001);doc.setDrawColor(255,255,255);
+    })();
     cardBorda(C2X,anotCardY,C2W,ya+anotH-anotCardY);
     yBot=Math.max(yMostEnd,ya+anotH)+GAP;
 
@@ -13963,6 +13990,35 @@ function gerarPDFFichaLayout(f,filename){
     }
     cardBorda(mL,cardY,cW,yy-cardY);
     yBot=yy;
+
+    // ══ ANOTAÇÕES TÉCNICAS (largura total) — aparece quando há anotação na ficha ══
+    if(_anotNL){
+        let yA=yBot+GAP;
+        if(yA+SECTIT+_anotBodyH>PAGE_BOTTOM){doc.addPage();yA=10;}
+        yy=secTit('Anotações Técnicas',yA,[50,55,65],mL,cW);
+        bloco(mL,yy,cW,_anotBodyH,250,252,245,null);
+        doc.setFillColor(...D);doc.setDrawColor(...D);doc.rect(mL,yy,2.5,_anotBodyH,'FD');
+        doc.setTextColor(20,25,40);doc.setFontSize(7);doc.setFont('helvetica','normal');
+        var _xA=mL+2.5+5.5,_wA=cW-2.5-5.5-4;
+        var _lsA=_anotLinhas.slice(0,_anotNL);
+        if(_anotLinhas.length>_anotNL){
+            var _uA=_lsA[_anotNL-1].trim();
+            while(_uA.length>1&&doc.getTextWidth(_uA+'…')>_wA)_uA=_uA.slice(0,-1);
+            _lsA[_anotNL-1]=_uA+'…';
+        }
+        _lsA.forEach(function(l,i){
+            var yL=yy+3+i*_ANOT_LH+2.4;
+            var t=l.trim();
+            var ult=(i===_lsA.length-1);
+            var pal=t.split(' ').filter(function(p){return p!=='';});
+            if(ult||pal.length<=1||doc.getTextWidth(t)<_wA*0.85){doc.text(t,_xA,yL);return;}
+            var esp=(_wA-doc.getTextWidth(pal.join('')))/(pal.length-1);
+            var xp=_xA;
+            pal.forEach(function(p){doc.text(p,xp,yL);xp+=doc.getTextWidth(p)+esp;});
+        });
+        cardBorda(mL,yA,cW,yy+_anotBodyH-yA);
+        yBot=yy+_anotBodyH;
+    }
 
     // ══ ASSINATURAS E RODAPÉ ══
     let yS=Math.max(yBot+4,H-20);
