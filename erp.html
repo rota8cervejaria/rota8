@@ -3888,6 +3888,101 @@ window.zerarTodosOsDadosERP = function() {
     });
 };
 
+// Zera TUDO, exceto os cadastros de Equipamentos, Água (perfis) e Embalagens p/
+// Envase (barris) — no celular e na nuvem (Firebase). Ação destrutiva e
+// irreversível: só Administrador, baixa um Backup JSON completo ANTES de apagar
+// e exige digitar APAGAR. Só mexe nos dados depois que o Firebase confirmar a
+// gravação (evita recarregar a página antes da nuvem apagar e o dado "voltar").
+window.zerarDadosMantendoCadastrosERP = function() {
+    if (!window._r8ExigirAdmin('Zerar os dados é uma ação restrita a Administradores.')) return;
+    confirmarAcao({
+        titulo: '⚠ Zerar dados (manter cadastros)',
+        msg: 'Isso vai APAGAR PERMANENTEMENTE tudo (fichas técnicas, insumos, sais, estoque, vendas, financeiro, sanitizações, histórico etc.), no celular e na nuvem — em TODOS os aparelhos. Ficam apenas os cadastros de Equipamentos, Água e Embalagens p/ Envase (tanques e embalagens voltam para "Disponível"). Um Backup JSON será baixado automaticamente antes. Esta ação não pode ser desfeita.',
+        labelOk: 'Entendi, continuar',
+        onConfirm: function() {
+            var confirmacao = window.prompt('Para confirmar, digite APAGAR (tudo em maiúsculas) e toque OK:');
+            if (confirmacao !== 'APAGAR') {
+                R8.toast.aviso('Operação cancelada — texto de confirmação não conferiu.');
+                return;
+            }
+            var _db = window.db;
+            if (!_db || typeof _db.ref !== 'function') {
+                R8.toast.erro('Sem conexão com a nuvem (Firebase). Nada foi apagado — tente novamente com internet.');
+                return;
+            }
+            // 1) Backup completo ANTES de qualquer alteração
+            try {
+                var agora = new Date();
+                var p2 = function(n){ return ('0' + n).slice(-2); };
+                var carimbo = agora.getFullYear() + p2(agora.getMonth()+1) + p2(agora.getDate()) + '_' + p2(agora.getHours()) + p2(agora.getMinutes()) + p2(agora.getSeconds());
+                var blob = new Blob([JSON.stringify(dadosERP)], {type: 'application/json'});
+                var a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = 'backup_antes_de_zerar_' + carimbo + '.json';
+                document.body.appendChild(a); a.click(); a.remove();
+            } catch (e) {
+                R8.toast.erro('Não foi possível gerar o backup. Nada foi apagado.');
+                return;
+            }
+            R8.toast.aviso('Backup baixado. Apagando os dados...', 4000);
+
+            // 2) Monta o novo estado: tudo vazio, exceto os 3 cadastros mantidos
+            setTimeout(function() {
+                var MANTER = ['equipamentos', 'aguas', 'barris'];
+                var atual = JSON.parse(JSON.stringify(dadosERP));
+                var novo = {};
+                ['estilos','insumos','sais','produtosLimpeza','fichasTecnicas','sanitizacoes','envases',
+                 'produtosAcabados','movimentacoesEstoque','pasteurizacoes','vendasPDV','vendasTaps',
+                 'receitasImportadas','auditoria','metas','analisesSensoriais','medicoesCamara',
+                 'recebimentosBarris'].forEach(function(k){ novo[k] = []; });
+                MANTER.forEach(function(k){ novo[k] = atual[k] || []; });
+                // Tanques e embalagens guardam status/lote ligados às fichas que deixam de existir
+                ['equipamentos', 'barris'].forEach(function(k) {
+                    (novo[k] || []).forEach(function(it) {
+                        if (!it) return;
+                        if (it.status === 'Em Uso' || it.status === 'Aguardando Sanitização') it.status = 'Disponível';
+                        if (it.loteAtual) it.loteAtual = '';
+                    });
+                });
+                novo.auditoria = [{
+                    ts: new Date().toISOString(),
+                    usuario: window._r8Operador || ((window.usuarioAtual && usuarioAtual.email) ? usuarioAtual.email : 'offline'),
+                    modulo: 'Sistema', acao: 'zerar',
+                    detalhe: 'Dados zerados (mantidos: Equipamentos, Água, Embalagens p/ Envase)'
+                }];
+                var payload = JSON.parse(JSON.stringify(novo));
+                payload._syncTs = Date.now();
+                window._r8MeuUltimoSyncTs = payload._syncTs;
+
+                // 3) Grava na nuvem (substitui TODO o nó) e só então limpa o aparelho e recarrega
+                _db.ref('erp/rota8cervejaria/dados').set(payload).then(function() {
+                    dadosERP = novo;
+                    window._r8UltimoSnapshotServidor = JSON.parse(JSON.stringify(payload));
+                    window.etapasMosturaProducao = [];
+                    window.adicoesLupuloProducao = [];
+                    window.inoculacoesLeveduraProducao = [];
+                    window.insumosAdicionadosProducao = [];
+                    window.medicoesFermentacaoProducao = [];
+                    window.trasfegasProducao = [];
+                    window.maturacoesMedicaoProducao = [];
+                    window.purgasProducao = [];
+                    window.saisAdicionadosProducao = [];
+                    window.envasesAdicionadosProducao = [];
+                    try {
+                        localStorage.setItem('rota8_dados', JSON.stringify(novo));
+                        localStorage.setItem('rota8_dados_ts', String(Date.now()));
+                        localStorage.setItem('rota8_sync_pendente', 'false');
+                    } catch (e) {}
+                    R8.toast.ok('Dados zerados. Mantidos: Equipamentos, Água e Embalagens p/ Envase.');
+                    setTimeout(function(){ location.reload(); }, 1800);
+                }).catch(function(err) {
+                    R8.toast.erro('Falha ao apagar na nuvem — nada foi alterado: ' + ((err && err.message) ? err.message : err));
+                });
+            }, 900);
+        }
+    });
+};
+
 // Backup automático rotativo — independente do "Backup JSON" manual.
 // Guarda até 3 cópias (mais recentes) no localStorage, no máximo uma a cada
 // 6 horas, para servir de rede de segurança caso algo dê errado entre um
@@ -13474,6 +13569,9 @@ function gerarPDFFichaLayout(f,filename){
             doc.text(String(txt),ax,y+h*0.65,op);
         }
     };
+    // baseline que centraliza verticalmente o texto de título de coluna na barra (altura h) —
+    // acompanha a altura real da barra (que encolhe na compactação) e o tamanho da fonte em uso
+    const hdrY=(y,h)=>y+h/2+doc.getFontSize()*0.06;
     const secTit=(titulo,y,cor,x,w)=>{
         bloco(x,y,w,5,...cor,titulo,true,255,255,255,7.5,'left');
         return y+5;
@@ -13521,7 +13619,7 @@ function gerarPDFFichaLayout(f,filename){
     let px=C1X;
     [['Parâmetro',C1W*0.48],['Planejado',C1W*0.26],['Real',C1W*0.26]].forEach(([t,w])=>{
         doc.setTextColor(190,205,255);doc.setFontSize(6.5);doc.setFont('helvetica','bold');
-        doc.text(t,px+w/2,yy+3.2,{align:'center'});px+=w;
+        doc.text(t,px+w/2,hdrY(yy,LHH),{align:'center'});px+=w;
     });yy+=LHH;
     function partesDensPlato(sg) {
         if (!sg) return null;
@@ -13601,7 +13699,7 @@ function gerarPDFFichaLayout(f,filename){
     let hsx=C1X;
     sCols.forEach(([w,t])=>{
         doc.setTextColor(220,210,255);doc.setFontSize(6.5);doc.setFont('helvetica','bold');
-        doc.text(t,hsx+w/2,yy+3.2,{align:'center'});hsx+=w;
+        doc.text(t,hsx+w/2,hdrY(yy,LHH),{align:'center'});hsx+=w;
     });yy+=LHH;
     if(!_saisFicha.length){
         bloco(C1X,yy,C1W,LH,255,250,242,'Nenhuma correção registrada.',false,160,150,140,7,'center');yy+=LH;
@@ -13654,7 +13752,7 @@ function gerarPDFFichaLayout(f,filename){
         let lx=C2X;
         [['Data',C2W*0.28],['Dens.',C2W*0.17],['°P',C2W*0.17],['pH',C2W*0.12],['Temp°C',C2W*0.26]].forEach(([t,w])=>{
             doc.setTextColor(190,205,255);doc.setFontSize(5.5);doc.setFont('helvetica','bold');
-            doc.text(t,lx+w/2,yy+3.2,{align:'center'});lx+=w;
+            doc.text(t,lx+w/2,hdrY(yy,LHH),{align:'center'});lx+=w;
         });yy+=LHH;
         levsFicha.forEach((l,i)=>{
             let[r,g,b]=i%2?[238,240,255]:[248,250,255];
@@ -13682,7 +13780,7 @@ function gerarPDFFichaLayout(f,filename){
         let fx=C2X;
         [['Data/Hora',C2W*0.28],['Dens.',C2W*0.17],['°P',C2W*0.17],['pH',C2W*0.12],['Temp°C',C2W*0.26]].forEach(([t,w])=>{
             doc.setTextColor(190,205,255);doc.setFontSize(5.5);doc.setFont('helvetica','bold');
-            doc.text(t,fx+w/2,yy+3.2,{align:'center'});fx+=w;
+            doc.text(t,fx+w/2,hdrY(yy,LHH),{align:'center'});fx+=w;
         });yy+=LHH;
         ferm.forEach((m,i)=>{
             let[r,g,b]=i%2?[238,240,255]:[248,250,255];
@@ -13710,7 +13808,7 @@ function gerarPDFFichaLayout(f,filename){
         let mx2=C2X;
         [['Data',C2W*0.3],['Temp.',C2W*0.25],['Pressão',C2W*0.25],['Obs.',C2W*0.2]].forEach(([t,w])=>{
             doc.setTextColor(180,220,255);doc.setFontSize(5.5);doc.setFont('helvetica','bold');
-            doc.text(t,mx2+w/2,yy+3.2,{align:'center'});mx2+=w;
+            doc.text(t,mx2+w/2,hdrY(yy,LHH),{align:'center'});mx2+=w;
         });yy+=LHH;
         matur.forEach((m,i)=>{
             let[r,g,b]=i%2?[228,244,255]:[240,250,255];
@@ -13777,7 +13875,7 @@ function gerarPDFFichaLayout(f,filename){
         let hx=C1X;
         iCols.forEach(([w,t])=>{
             doc.setTextColor(255,255,255);doc.setFontSize(6.5);doc.setFont('helvetica','bold');
-            doc.text(t,hx+w/2,yy2+3.2,{align:'center'});hx+=w;
+            doc.text(t,hx+w/2,hdrY(yy2,LHH),{align:'center'});hx+=w;
         });
         return yy2+LHH;
     }
@@ -13827,7 +13925,7 @@ function gerarPDFFichaLayout(f,filename){
         let mx=C1X;
         [['Etapa',C1W*0.46],['Temp.',C1W*0.27],['Tempo',C1W*0.27]].forEach(([t,w])=>{
             doc.setTextColor(220,210,255);doc.setFontSize(7);doc.setFont('helvetica','bold');
-            doc.text(t,mx+w/2,yy+3.2,{align:'center'});mx+=w;
+            doc.text(t,mx+w/2,hdrY(yy,LHH),{align:'center'});mx+=w;
         });yy+=LHH;
         most.forEach((m,i)=>{
             let[r,g,b]=i%2?[242,238,252]:[250,248,255];
@@ -13933,7 +14031,7 @@ function gerarPDFFichaLayout(f,filename){
         let lpx=mL;
         [['Lúpulo',cW*0.32],['AA (%)',cW*0.13],['Etapa',cW*0.2],['Tempo',cW*0.15],['Qtde',cW*0.2]].forEach(([t,w])=>{
             doc.setTextColor(255,235,210);doc.setFontSize(7);doc.setFont('helvetica','bold');
-            doc.text(t,lpx+w/2,yy+3.2,{align:'center'});lpx+=w;
+            doc.text(t,lpx+w/2,hdrY(yy,LHH),{align:'center'});lpx+=w;
         });yy+=LHH;
         lups.forEach((l,i)=>{
             let[r,g,b]=i%2?[252,236,214]:[255,246,232];
@@ -13967,7 +14065,7 @@ function gerarPDFFichaLayout(f,filename){
     let hex=mL;
     eCols.forEach(([w,t])=>{
         doc.setTextColor(220,255,235);doc.setFontSize(6.5);doc.setFont('helvetica','bold');
-        doc.text(t,hex+w/2,yy+3.2,{align:'center'});hex+=w;
+        doc.text(t,hex+w/2,hdrY(yy,LHH),{align:'center'});hex+=w;
     });yy+=LHH;
     if(!_envasesFicha.length){
         bloco(mL,yy,cW,LH,240,253,244,'Nenhuma etapa de envase registrada.',false,100,140,120,7,'center');yy+=LH;
@@ -17295,6 +17393,7 @@ if(document.readyState === 'loading'){
         </div>
         <div style="margin-top:14px;padding-top:14px;border-top:1px dashed #fca5a5">
             <div style="font-size:10px;font-weight:700;color:#991b1b;text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px">⚠ Zona de risco</div>
+            <button class="btn-backup" style="background:#fef2f2;color:#991b1b;border:1.5px solid #fca5a5;font-weight:700;margin-bottom:8px" onclick="zerarDadosMantendoCadastrosERP()"><i class="fas fa-eraser"></i> Zerar Dados (manter Equipamentos, Água e Embalagens)</button>
             <button class="btn-backup" style="background:#fef2f2;color:#991b1b;border:1.5px solid #fca5a5;font-weight:700" onclick="zerarTodosOsDadosERP()"><i class="fas fa-trash-alt"></i> Zerar Todos os Dados</button>
         </div>
     </div>
