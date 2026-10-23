@@ -26,7 +26,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-10-23-1';
+    window.R8_BUILD = '2026-10-23-2';
     (function() {
         var buildVisto = null;
         try { buildVisto = localStorage.getItem('r8_build_visto'); } catch(e){}
@@ -7889,6 +7889,7 @@ function _r8RenderizarRevisaoNFe(dados) {
     window._r8RevisaoItensAtual = dados.itens || [];
     var tiposDisponiveis = ['Malte', 'Levedura', 'Lúpulos', 'Adjunto', 'Especiaria'];
     window._r8OrigemImportacaoAtual = dados.origemLabel || 'Importação NF-e';
+    window._r8RevisaoNotaAtual = dados.nota || {};
     var overlay = document.getElementById('_r8OverlayRevisaoNFe');
     if (overlay) overlay.remove();
     overlay = document.createElement('div');
@@ -7984,6 +7985,13 @@ window._r8ConfirmarImportacaoNFe = function() {
     var itensEl = overlay.querySelectorAll('.r8-revisao-item');
     var criados = 0, ignorados = 0;
     if (!dadosERP.movimentacoesEstoque) dadosERP.movimentacoesEstoque = [];
+    // Importação direta de NF-e (Cadastro → Insumos): cada item também vira uma Compra em
+    // Financeiro · Compras (pendente de pagamento). Itens que já vieram de uma compra do
+    // Financeiro (origemCompraId preenchido) NÃO geram compra nova — evita duplicar.
+    var notaImp = window._r8RevisaoNotaAtual || {};
+    var comprasFin = (dadosERP.financeiro && dadosERP.financeiro.r8c) ? dadosERP.financeiro.r8c : [];
+    var comprasCriadas = 0;
+    var grupoCompraId = R8.novoId();
     itensEl.forEach(function(el) {
         var sel = el.querySelector('._r8SelInsumo').value;
         if (!sel) { ignorados++; return; }
@@ -8020,6 +8028,28 @@ window._r8ConfirmarImportacaoNFe = function() {
             laudoNome: laudo ? laudo.nome : '', laudoURL: '', laudoB64: laudo ? laudo.b64 : '', laudoTipo: laudo ? laudo.tipo : ''
         };
         obj.id = R8.novoId();
+        if (!origemCompraId) {
+            var nfNum = notaImp.numero || '', nfCnpj = notaImp.fornecedorCNPJ || '';
+            var jaExiste = nfNum && comprasFin.some(function(cp) {
+                return cp.numeroNF === nfNum && (cp.cnpjFornecedor || '') === nfCnpj
+                    && cp.descricao === descricao && Math.abs((cp.quantidade || 0) - qtd) < 0.0001;
+            });
+            if (!jaExiste) {
+                var dtNota = String(notaImp.dataEmissao || '').slice(0, 10);
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(dtNota)) dtNota = new Date().toISOString().split('T')[0];
+                var compraNova = {
+                    id: R8.novoId(), grupoId: grupoCompraId, secao: 'Fábrica', data: dtNota,
+                    fornecedor: fornecedor, numeroNF: nfNum, cnpjFornecedor: nfCnpj,
+                    tipo: 'Insumos / Matéria-Prima', unidade: unid, descricao: descricao,
+                    valorUn: valor, quantidade: qtd, total: Math.round((qtd * valor + Number.EPSILON) * 100) / 100,
+                    pagamento: '', vencimento: '', statusPag: 'pendente', anexo: null,
+                    criadoEm: new Date().toISOString()
+                };
+                comprasFin.push(compraNova);
+                obj.origemCompraId = compraNova.id;
+                comprasCriadas++;
+            }
+        }
         dadosERP.insumos.push(obj);
         var saldoAtual = _r8SaldoAgrupadoInsumo(codigo);
         dadosERP.movimentacoesEstoque.push({
@@ -8041,12 +8071,21 @@ window._r8ConfirmarImportacaoNFe = function() {
     overlay.remove();
     window._r8RevisaoLaudos = {};
     window._r8RevisaoItensAtual = [];
+    if (comprasCriadas) {
+        if (!dadosERP.financeiro) dadosERP.financeiro = {};
+        dadosERP.financeiro.r8c = comprasFin;
+    }
     if (criados) {
         salvarDadosFirebase();
         atualizarListaInsumosERP();
         setTimeout(_renderizarAlertasEstoque, 200);
+        if (comprasCriadas) {
+            try { if (typeof renderHistCompras === 'function' && document.getElementById('busca-compras')) renderHistCompras(); } catch (e) {}
+            try { if (typeof renderDash === 'function') renderDash(); } catch (e) {}
+        }
     }
-    R8.toast.ok(criados + ' entrada(s) registrada(s)' + (ignorados ? ', ' + ignorados + ' ignorado(s)' : '') + '.');
+    R8.toast.ok(criados + ' entrada(s) registrada(s)' + (ignorados ? ', ' + ignorados + ' ignorado(s)' : '')
+        + (comprasCriadas ? ' · ' + comprasCriadas + ' compra(s) lançada(s) em Financeiro (pendente de pagamento)' : '') + '.');
 };
 
 function salvarEquipamentoERP(){if(!window._r8ExigirAdmin('Editar Cadastros é restrito a Administradores.'))return;R8.limparValidacao(['eqCodigo']);let cod=document.getElementById('eqCodigo')?.value.trim();if(!R8.validar([{id:'eqCodigo',label:'Código',obrigatorio:true}]))return;let obj={codigo:cod,descricao:document.getElementById('eqDescricao')?.value||'',tipo:document.getElementById('eqTipo')?.value,situacao:document.getElementById('eqSituacao')?.value,valor:R8.valorMoeda(document.getElementById('eqValor')),obs:document.getElementById('eqObs')?.value||''};obj.id=(editandoIdERP!==null&&dadosERP.equipamentos[editandoIdERP]&&dadosERP.equipamentos[editandoIdERP].id)?dadosERP.equipamentos[editandoIdERP].id:R8.novoId();let _ed=editandoIdERP!==null;if(editandoIdERP!==null)dadosERP.equipamentos[editandoIdERP]=obj;else dadosERP.equipamentos.push(obj);salvarDadosLocal();fecharFormERP('formEquipamento');atualizarListaEquipamentosERP();registrarAuditoria('Equipamento',_ed?'editar':'criar','Código: '+cod);editandoIdERP=null;R8.toast.ok('Equipamento salvo!');}
