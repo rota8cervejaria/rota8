@@ -26,7 +26,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-10-23-2';
+    window.R8_BUILD = '2026-10-23-4';
     (function() {
         var buildVisto = null;
         try { buildVisto = localStorage.getItem('r8_build_visto'); } catch(e){}
@@ -8771,6 +8771,7 @@ window.corrigirDuplicidadeBaixaInsumos = function() {
 
     dadosERP.fichasTecnicas.forEach(function(ficha) {
         if (!ficha.lote) return;
+        if (ficha.legado) return; // lote legado nunca baixa estoque
         var corretoMapa = _acumularCodigosDeFicha(ficha); // Campo Insumos (apenas)
 
         var atualMapa = {};
@@ -8823,6 +8824,52 @@ window.corrigirDuplicidadeBaixaInsumos = function() {
     console.log('[R8] Correção de duplicidade de estoque:\n' + relatorio.join('\n'));
 };
 
+// ── LOTE LEGADO: nada de insumos/sais no cadastro nem no estoque ───────────
+// Itens criados automaticamente pela importação da receita (_bbAuto, saldo 0,
+// sem movimentação) que só pertencem a lotes legados são retirados do cadastro.
+window._r8AutoLegadoStash = { insumos: [], sais: [] };
+window._r8CodigosDeFicha = function(f) {
+    var c = {};
+    ['insumos', 'lupulos', 'leveduras'].forEach(function(k) { (f[k] || []).forEach(function(i) { if (i && i.codigo) c[i.codigo] = 1; }); });
+    (f.sais || []).forEach(function(x) { if (x && x.codigo) c[x.codigo] = 1; });
+    return c;
+};
+window._r8LimparAutoCadastroLegado = function(fichaExtra) {
+    var mapear = function(f, alvo) { var m = window._r8CodigosDeFicha(f); Object.keys(m).forEach(function(k) { alvo[k] = 1; }); };
+    var legadoCods = {}, usados = {};
+    (dadosERP.fichasTecnicas || []).forEach(function(f) { mapear(f, f.legado ? legadoCods : usados); });
+    mapear(fichaExtra || { insumos: window.insumosAdicionadosProducao, lupulos: window.adicoesLupuloProducao,
+        leveduras: window.inoculacoesLeveduraProducao, sais: window.saisAdicionadosProducao }, legadoCods);
+    var temMov = function(cod, sal) { return (dadosERP.movimentacoesEstoque || []).some(function(m) { return m.codigo === cod && (!sal || m.categoria === 'sais'); }); };
+    var removidos = 0;
+    dadosERP.insumos = (dadosERP.insumos || []).filter(function(i) {
+        if (!i._bbAuto || (i.qtd || 0) > 0 || i.origemCompraId || !legadoCods[i.codigo] || usados[i.codigo] || temMov(i.codigo, false)) return true;
+        window._r8AutoLegadoStash.insumos.push(i); removidos++; return false;
+    });
+    dadosERP.sais = (dadosERP.sais || []).filter(function(x) {
+        if (!x._bbAuto || (x.qtd || 0) > 0 || !legadoCods[x.codigo] || usados[x.codigo] || temMov(x.codigo, true)) return true;
+        window._r8AutoLegadoStash.sais.push(x); removidos++; return false;
+    });
+    if (removidos) {
+        salvarDadosFirebase();
+        try { if (typeof atualizarListaInsumosERP === 'function') atualizarListaInsumosERP(); } catch (e) {}
+        try { setTimeout(_renderizarAlertasEstoque, 200); } catch (e) {}
+    }
+    return removidos;
+};
+window._r8AlternarLegado = function(marcado) {
+    if (marcado) {
+        var n = window._r8LimparAutoCadastroLegado();
+        if (n) R8.toast.ok(n + ' item(ns) criado(s) pela importação foram retirados do cadastro de insumos/sais — lote legado não mexe no estoque de insumos.');
+    } else {
+        var st = window._r8AutoLegadoStash, vol = 0;
+        st.insumos.forEach(function(i) { if (!(dadosERP.insumos || []).some(function(x) { return x.codigo === i.codigo; })) { dadosERP.insumos.push(i); vol++; } });
+        st.sais.forEach(function(x) { if (!(dadosERP.sais || []).some(function(y) { return y.codigo === x.codigo; })) { dadosERP.sais.push(x); vol++; } });
+        window._r8AutoLegadoStash = { insumos: [], sais: [] };
+        if (vol) { salvarDadosFirebase(); try { if (typeof atualizarListaInsumosERP === 'function') atualizarListaInsumosERP(); } catch (e) {} }
+    }
+};
+
 // SALVAR FICHA TÉCNICA
 function salvarFichaTecnicaERP() {
     let lote = document.getElementById('producaoLote')?.value.trim();
@@ -8870,6 +8917,7 @@ function salvarFichaTecnicaERP() {
         purgasRegistros: window.purgasProducao || [],
         envases: window.envasesAdicionadosProducao || [],
         statusLote: document.getElementById('producaoStatusLote')?.value || 'planejamento',
+        legado: !!document.getElementById('producaoLegado')?.checked,
         anotacoes: document.getElementById('anotacoesProducao')?.value || '',
         caracteristicasPersonalizadas: document.getElementById('caracteristicasPersonalizadasProducao')?.value || '',
         receitaPDF:  window._receitaPDFBase64 || (editandoFichaIdx !== null && dadosERP.fichasTecnicas[editandoFichaIdx]?.receitaPDF) || '',
@@ -8878,6 +8926,8 @@ function salvarFichaTecnicaERP() {
         receitaXMLNome: window._r8ReceitaXMLNome  || (editandoFichaIdx !== null && dadosERP.fichasTecnicas[editandoFichaIdx]?.receitaXMLNome) || '',
         receitaBB:      window._bbEstadoJSON      || (editandoFichaIdx !== null && dadosERP.fichasTecnicas[editandoFichaIdx]?.receitaBB) || ''
     };
+
+    if (ficha.legado) window._r8LimparAutoCadastroLegado(ficha); // lote legado: nada vai para Insumos/Sais
 
     // ── EDIÇÃO: baixa/estorno de insumos pela DIFERENÇA em relação ao
     // que já havia sido baixado antes (evita baixar de novo o que já foi
@@ -8889,7 +8939,7 @@ function salvarFichaTecnicaERP() {
         if (!dadosERP.movimentacoesEstoque) dadosERP.movimentacoesEstoque = [];
 
         var baixasAnteriores = (fichaAntiga && fichaAntiga._baixasInsumos) || {};
-        var baixasNovas = _acumularCodigosDeFicha(ficha);
+        var baixasNovas = ficha.legado ? {} : _acumularCodigosDeFicha(ficha);
         var todosCodigos = Array.from(new Set(Object.keys(baixasAnteriores).concat(Object.keys(baixasNovas))));
         var qtdBaixadaAgora = 0, qtdEstornadaAgora = 0;
         var semEstoqueEdicao = [];
@@ -8924,7 +8974,7 @@ function salvarFichaTecnicaERP() {
         // fichas antigas (que só guardavam o lote do sal, sem código).
         var baixasAnterioresSais = (fichaAntiga && fichaAntiga._baixasSais) || {};
         var baixasNovasSais = {};
-        (ficha.sais || []).forEach(function(s) {
+        (ficha.legado ? [] : (ficha.sais || [])).forEach(function(s) {
             var cod = _r8ResolverCodigoSal(s);
             if (!cod || !s.qtd || s.qtd <= 0) return;
             baixasNovasSais[cod] = (baixasNovasSais[cod] || 0) + parseFloat(s.qtd);
@@ -8999,6 +9049,19 @@ function salvarFichaTecnicaERP() {
 
     // ── NOVA FICHA: calcular baixas e mostrar modal de confirmação ─────
     if (!dadosERP.movimentacoesEstoque) dadosERP.movimentacoesEstoque = [];
+
+    // ── LOTE LEGADO: já produzido antes do sistema — grava a ficha e o Envase
+    // (rastreabilidade por barril / Estoque de Produto Acabado) SEM baixar
+    // nenhum insumo nem sal do estoque.
+    if (ficha.legado) {
+        confirmarAcao({
+            titulo: 'Gravar lote legado',
+            msg: 'O lote ' + lote + ' será gravado como LEGADO: nenhum insumo e nenhum sal será baixado do estoque. Os envases informados entram no Estoque · Produto Acabado (Câmara Fria), rastreados pelo código de cada barril.',
+            labelOk: 'Gravar sem baixa',
+            onConfirm: function() { _executarBaixaEGravarFicha(ficha, [], []); }
+        });
+        return;
+    }
 
     // Acumula tudo que baixa estoque de verdade: Insumos (mosturação),
     // Lúpulos e Leveduras — cada categoria é lançada uma vez só, sem
@@ -9314,6 +9377,9 @@ function _limparFormFicha() {
     // Resetar Status do Lote para o padrão (nova ficha sempre inicia em Planejamento)
     var statusEl = document.getElementById('producaoStatusLote');
     if (statusEl) statusEl.value = 'planejamento';
+    var legadoEl = document.getElementById('producaoLegado');
+    if (legadoEl) legadoEl.checked = false;
+    window._r8AutoLegadoStash = { insumos: [], sais: [] };
 
     // Restaurar título
     var h2 = document.getElementById('tituloFicha');
@@ -9358,6 +9424,7 @@ window.atualizarListaFichasERP = function() {
         var st = _statusLoteMap[sk] || _statusLoteMap.planejamento;
         var ico = _iconeStatus[sk] || '📋';
         var statusBadge = '<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:'+st.cor+';background:'+st.bg+';border:1.5px solid '+st.borda+';border-radius:20px;padding:3px 10px;white-space:nowrap">'+ico+' '+st.label+'</span>';
+        if (f.legado) statusBadge += ' <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#92400e;background:#fffbeb;border:1.5px solid #fde68a;border-radius:20px;padding:3px 10px;white-space:nowrap">📦 Legado</span>';
         return '<div class="ficha-arq-card">'
             // Nome da cerveja (somente o nome), centralizado no topo do card
             + (window._nomeCervejaFicha(f) ? '<div class="ficha-arq-nome">'+R8.esc(window._nomeCervejaFicha(f))+'</div>' : '')
@@ -9565,6 +9632,7 @@ window.editarFichaERP=function(idx){
     set('anotacoesProducao',f.anotacoes);
     set('caracteristicasPersonalizadasProducao',f.caracteristicasPersonalizadas);
     set('producaoStatusLote',f.statusLote||'planejamento');
+    (function(){var _lg=document.getElementById('producaoLegado');if(_lg)_lg.checked=!!f.legado;})();
     // ── Restaurar todas as arrays de etapas ──────────────────────────
     window.insumosAdicionadosProducao   = f.insumos            ? [...f.insumos]            : [];
     window.etapasMosturaProducao        = f.mostura            ? [...f.mostura]            : [];
@@ -11144,6 +11212,7 @@ function _htmlSaldoPorLoteInsumos(busca, tipo, baixo) {
 
     var algumCard = false;
     var html = fichas.map(function(f){
+        if (f.legado) return ''; // lote legado: não consumiu insumos do estoque
         var codigosLote = Object.keys(_acumularCodigosDeFicha(f));
         if (!codigosLote.length) return '';
         var linhas = codigosLote.map(function(cod){
@@ -17871,6 +17940,9 @@ if(document.readyState === 'loading'){
                 <option value="finalizado">Finalizado</option>
             </select>
         </div>
+        <div class="campo-linha" style="background:#fffbeb;border:1.5px solid #fde68a;border-radius:10px;padding:10px 12px">
+            <label style="display:flex;gap:8px;align-items:flex-start;cursor:pointer;font-weight:700;font-size:13px;color:#92400e"><input type="checkbox" id="producaoLegado" style="width:auto;margin-top:3px" onchange="_r8AlternarLegado(this.checked)"><span>📦 Lote legado (já produzido)<br><small style="font-weight:500;color:#78350f">Para registrar um lote que já foi produzido e está em estoque: grava a ficha e a rastreabilidade pelos barris (Envase), mas <b>NÃO dá baixa</b> em insumos nem sais.</small></span></label>
+        </div>
 
         <div class="secao-obs"><label><i class="fas fa-pen"></i> Anotações Técnicas</label><textarea id="anotacoesProducao" placeholder="-"></textarea></div>
         <div class="secao-obs"><label><i class="fas fa-wine-bottle"></i> Características e Perfil Sensorial (opcional)</label><textarea id="caracteristicasPersonalizadasProducao" placeholder="Deixe em branco para usar a descrição padrão do estilo. Preencha aqui para uma descrição específica deste lote (ex.: insumos diferentes do padrão do estilo) — aparece na Ficha Técnica em PDF no lugar da descrição padrão."></textarea></div>
@@ -21317,6 +21389,11 @@ window._r8FinInit = function(pagina) {
         while (existentes[cod]) { n++; cod = base + '-' + n; }
         return cod;
     }
+    // Lote legado marcado na Ficha: a importação não cadastra nada em Insumos/Sais.
+    function _legadoMarcado() {
+        var c = document.getElementById('producaoLegado');
+        return !!(c && c.checked);
+    }
     function _bbGarantirInsumo(nome, grupo, tipoSugerido) {
         if (typeof dadosERP === 'undefined' || !dadosERP) return null;
         if (!dadosERP.insumos) dadosERP.insumos = [];
@@ -21329,6 +21406,7 @@ window._r8FinInit = function(pagina) {
         var tipo = tipoSugerido || GRUPO_TIPO[grupo] || 'Adjunto';
         var unidade = (tipo === 'Malte' || tipo === 'Adjunto') ? 'kg' : 'g';
         var cod = _bbCodigoUnico(_bbSlug(nome));
+        if (_legadoMarcado()) return { codigo: cod, descricao: nome, tipo: tipo, unidade: unidade }; // só na ficha, fora do cadastro/estoque
         var obj = {
             codigo: cod, lote: '', tipo: tipo, descricao: nome, produtor: '', fornecedor: '',
             qtd: 0, valor: 0, unidade: unidade, validade: '', valorTotal: 0,
@@ -21345,6 +21423,7 @@ window._r8FinInit = function(pagina) {
         var existente = dadosERP.sais.find(function (s) { return s._bbAuto && chaveSal(s.nome) === k; });
         if (existente) return existente;
         var cod = _bbCodigoUnico(_bbSlug(nome));
+        if (_legadoMarcado()) return { codigo: cod, nome: nome, fabricante: '', lote: '', qtd: 0 }; // só na ficha, fora do cadastro/estoque
         var obj = {
             codigo: cod, nome: nome, fabricante: '', fornecedor: '', lote: '', validade: '',
             qtd: 0, valor: 0, obs: 'Criado automaticamente pela importação do Brew Beer — sal não estava no Cadastro.',
@@ -21578,7 +21657,9 @@ window._r8FinInit = function(pagina) {
         if (r.fermentacao.length) L.push('Fermentação planejada: ' + r.fermentacao.map(function (f) { return f.nome + ' ' + f.temp + '°C/' + f.dias + ' d'; }).join('; '));
         if (r.notas) L.push('Notas da receita: ' + r.notas);
         if (r.semDose.length) L.push('Leveduras sem dose na receita (não lançadas): ' + r.semDose.join('; '));
-        if (autoCadastrados.length) L.push('⚠ Itens SEM cadastro — criados automaticamente no Cadastro com estoque 0 (ficarão NEGATIVOS ao gravar a ficha; complete o cadastro e reponha o estoque): ' + autoCadastrados.join('; '));
+        if (autoCadastrados.length) L.push(_legadoMarcado()
+            ? 'Itens da receita sem cadastro — lote legado: ficam só nesta ficha, NÃO foram cadastrados nem mexem no estoque de insumos: ' + autoCadastrados.join('; ')
+            : '⚠ Itens SEM cadastro — criados automaticamente no Cadastro com estoque 0 (ficarão NEGATIVOS ao gravar a ficha; complete o cadastro e reponha o estoque): ' + autoCadastrados.join('; '));
         if (ignorados.length) L.push('Itens da receita NÃO importados: ' + ignorados.join('; '));
         if (saisSem.length) L.push('Sais NÃO importados: ' + saisSem.join('; '));
         var ta = el('anotacoesProducao');
@@ -21601,6 +21682,7 @@ window._r8FinInit = function(pagina) {
         if (window.R8 && R8.toast) {
             R8.toast.ok(resumo);
             aviso.concat(
+                (autoCadastrados.length && _legadoMarcado()) ? [autoCadastrados.length + ' item(ns) sem cadastro entraram só na ficha (lote legado) — nada foi cadastrado no estoque de insumos.'] :
                 autoCadastrados.length ? [autoCadastrados.length + ' item(ns) sem estoque foram importados mesmo assim e cadastrados com saldo 0 — vão ficar NEGATIVOS ao gravar. Veja as Anotações.'] : [],
                 ignorados.length ? [ignorados.length + ' item(ns) ficaram de fora — veja as Anotações.'] : [],
                 saisSem.length ? [saisSem.length + ' sal(is) sem cadastro — veja as Anotações.'] : []
