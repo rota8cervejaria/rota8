@@ -26,7 +26,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-10-23-4';
+    window.R8_BUILD = '2026-10-23-6';
     (function() {
         var buildVisto = null;
         try { buildVisto = localStorage.getItem('r8_build_visto'); } catch(e){}
@@ -4922,6 +4922,12 @@ function _resetControladoInsumos() {
 }
 
 function _limparMovimentacoesForaDosLotes() {
+    // DESATIVADA: era uma limpeza única dos dados de teste antigos, com os lotes
+    // R8-PIL2026-001 e R8-APA2026-001 fixos no código. Num sistema novo, qualquer
+    // lote com esse código (ex.: R8-APA2026-001) era "recuperado" a cada carga: o
+    // sistema lançava baixas de insumo (saldo negativo) e apagava cadastros e Produto
+    // Acabado dos demais lotes. Nunca mais deve rodar.
+    return;
     var FLAG = 'rota8_cleanup_movs_lotes_v3';
     try { if (localStorage.getItem(FLAG)) return; } catch(e){console.warn('[R8][_limparMovimentacoesForaDosLotes:flag-check]', e);}
     var lotesManter = ['R8-PIL2026-001', 'R8-APA2026-001'];
@@ -5281,6 +5287,7 @@ function carregarERPSistema() {
     _r8LimparDadosFantasmaSeed();
     window._dedupCadastrosPorCodigo();
     _r8MigrarIdsSanitizacoes();
+    try { if (typeof window._r8PurgarRastroLegado === 'function') window._r8PurgarRastroLegado(); } catch (e) { console.warn('[R8] purga de rastro legado', e); }
     // _resetControladoInsumos() removida — usava números inventados, não os reais do cadastro
     document.getElementById('landingPageContent').style.display = 'none';
     document.getElementById('loginFirebaseContainer').style.display = 'none';
@@ -8857,6 +8864,30 @@ window._r8LimparAutoCadastroLegado = function(fichaExtra) {
     }
     return removidos;
 };
+// Remove TODO rastro de insumos/sais de lotes legados: movimentações de baixa/estorno
+// (origem "Ficha Técnica…") dos lotes legados e os itens auto-cadastrados pela importação.
+// Não toca em Envase / Produto Acabado. Idempotente: roda no carregamento e ao gravar.
+window._r8PurgarRastroLegado = function(lotesExtra, fichaExtra) {
+    var lotes = {};
+    (dadosERP.fichasTecnicas || []).forEach(function(f) { if (f.legado && f.lote) lotes[f.lote] = 1; });
+    (lotesExtra || []).forEach(function(l) { if (l) lotes[l] = 1; });
+    var movs = dadosERP.movimentacoesEstoque || [];
+    var antes = movs.length;
+    dadosERP.movimentacoesEstoque = movs.filter(function(m) {
+        return !(m.lote && lotes[m.lote] && String(m.origem || '').indexOf('Ficha Técnica') === 0);
+    });
+    var removidas = antes - dadosERP.movimentacoesEstoque.length;
+    (dadosERP.fichasTecnicas || []).forEach(function(f) {
+        if (f.legado) { f._baixasInsumos = {}; f._baixasSais = {}; }
+    });
+    var auto = window._r8LimparAutoCadastroLegado(fichaExtra);
+    if (removidas && !auto) {
+        salvarDadosFirebase();
+        try { if (typeof atualizarListaInsumosERP === 'function') atualizarListaInsumosERP(); } catch (e) {}
+        try { setTimeout(_renderizarAlertasEstoque, 200); } catch (e) {}
+    }
+    return removidas + auto;
+};
 window._r8AlternarLegado = function(marcado) {
     if (marcado) {
         var n = window._r8LimparAutoCadastroLegado();
@@ -8927,7 +8958,7 @@ function salvarFichaTecnicaERP() {
         receitaBB:      window._bbEstadoJSON      || (editandoFichaIdx !== null && dadosERP.fichasTecnicas[editandoFichaIdx]?.receitaBB) || ''
     };
 
-    if (ficha.legado) window._r8LimparAutoCadastroLegado(ficha); // lote legado: nada vai para Insumos/Sais
+    if (ficha.legado) window._r8PurgarRastroLegado([ficha.lote], ficha); // lote legado: nenhum rastro em Insumos/Sais
 
     // ── EDIÇÃO: baixa/estorno de insumos pela DIFERENÇA em relação ao
     // que já havia sido baixado antes (evita baixar de novo o que já foi
@@ -8936,9 +8967,10 @@ function salvarFichaTecnicaERP() {
     if (editandoFichaIdx !== null) {
         var fichaAntiga = dadosERP.fichasTecnicas[editandoFichaIdx];
         var loteAntigo = fichaAntiga ? fichaAntiga.lote : null;
+        if (ficha.legado && loteAntigo) window._r8PurgarRastroLegado([loteAntigo, ficha.lote], ficha);
         if (!dadosERP.movimentacoesEstoque) dadosERP.movimentacoesEstoque = [];
 
-        var baixasAnteriores = (fichaAntiga && fichaAntiga._baixasInsumos) || {};
+        var baixasAnteriores = ficha.legado ? {} : ((fichaAntiga && fichaAntiga._baixasInsumos) || {});
         var baixasNovas = ficha.legado ? {} : _acumularCodigosDeFicha(ficha);
         var todosCodigos = Array.from(new Set(Object.keys(baixasAnteriores).concat(Object.keys(baixasNovas))));
         var qtdBaixadaAgora = 0, qtdEstornadaAgora = 0;
@@ -8972,7 +9004,7 @@ function salvarFichaTecnicaERP() {
         // Mesma lógica de diferença/estorno, agora para os Sais de Correção
         // de Água — usa _r8ResolverCodigoSal para compatibilidade com
         // fichas antigas (que só guardavam o lote do sal, sem código).
-        var baixasAnterioresSais = (fichaAntiga && fichaAntiga._baixasSais) || {};
+        var baixasAnterioresSais = ficha.legado ? {} : ((fichaAntiga && fichaAntiga._baixasSais) || {});
         var baixasNovasSais = {};
         (ficha.legado ? [] : (ficha.sais || [])).forEach(function(s) {
             var cod = _r8ResolverCodigoSal(s);
@@ -9469,6 +9501,7 @@ function _r8EstiloTipoInsumo(tipo) {
     return R8_TIPO_INSUMO_STYLE[tipo] || {icone:'fa-flask', grad:'linear-gradient(135deg,#f1f5f9,#e2e8f0)', cor:'#475569'};
 }
 function _htmlInsumosDoLote(f) {
+    if (f && f.legado) return '<div style="font-size:12.5px;color:#92400e;padding:20px;text-align:center;background:#fffbeb">📦 Lote legado — registrado só para a rastreabilidade do produto acabado. Nenhum insumo é baixado nem listado no estoque.</div>';
     var mapa = new Map();
     // Consome apenas o Campo Insumos — "Adição de Lúpulos" e "Inoculação
     // de Leveduras" são só o detalhamento de USO daquele mesmo item já
@@ -11154,8 +11187,10 @@ function _mudarTabEstoqueInsumos(tab) {
 // saídas (baixas) de insumos registradas para aquele lote — lidas direto do
 // livro de Movimentações (fonte real dos lançamentos).
 function _htmlMovimentacoesPorLoteInsumos(busca, tipo) {
+    var lotesLegados = {};
+    (dadosERP.fichasTecnicas||[]).forEach(function(f){ if (f.legado && f.lote) lotesLegados[f.lote] = 1; });
     var todas = (dadosERP.movimentacoesEstoque||[]).filter(function(m){
-        return m.lote && m.origem && m.origem.indexOf('Ficha Técnica') === 0;
+        return m.lote && !lotesLegados[m.lote] && m.origem && m.origem.indexOf('Ficha Técnica') === 0;
     }).slice().reverse(); // mais recentes primeiro
 
     var porLote = {};
@@ -11272,7 +11307,7 @@ function atualizarTabelaEstoqueAgrupada(){
             envase:       { label:'🍺 Envase',       cor:'#059669' },
             finalizado:   { label:'✅ Finalizado',   cor:'#10b981' }
         };
-        var fichas = dadosERP.fichasTecnicas || [];
+        var fichas = (dadosERP.fichasTecnicas || []).filter(function(f){ return !f.legado; }); // lote legado: nenhum rastro de insumos
         if (!fichas.length) {
             elLoteRes.innerHTML = '<div style="padding:18px;text-align:center;color:#94a3b8;font-size:12.5px;background:#fff;border:1px solid #eee;border-radius:14px">Nenhum lote em produção ainda.</div>';
         } else {
