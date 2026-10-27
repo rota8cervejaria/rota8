@@ -26,7 +26,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-10-23-6';
+    window.R8_BUILD = '2026-10-27-1';
     (function() {
         var buildVisto = null;
         try { buildVisto = localStorage.getItem('r8_build_visto'); } catch(e){}
@@ -4743,6 +4743,95 @@ window._r8AtualizarSaldoBaixaInsumo = function() {
     var i = (dadosERP.insumos||[]).find(function(x){ return x.codigo === cod; });
     info.textContent = 'Saldo atual: ' + _r8SaldoAgrupadoInsumo(cod).toFixed(2) + ' ' + (i && i.unidade || '');
 };
+// ── CONFERÊNCIA DE ESTOQUE ─ relatório de consistência de entradas/saídas ──
+window._r8ConferirEstoque = function() {
+    var secoes = [];
+    var add = function(titulo, itens, dica) { secoes.push({ titulo: titulo, itens: itens, dica: dica || '' }); };
+    var fmt = function(n) { return (parseFloat(n) || 0).toFixed(2); };
+
+    // 1) Insumos com saldo negativo
+    var neg = [], vistos = {};
+    (dadosERP.insumos || []).forEach(function(i) {
+        if (!i.codigo || vistos[i.codigo]) return; vistos[i.codigo] = 1;
+        var sd = _r8SaldoAgrupadoInsumo(i.codigo);
+        if (sd < -0.001) neg.push(i.codigo + ' — ' + (i.descricao || '') + ': ' + fmt(sd) + ' ' + (i.unidade || ''));
+    });
+    add('Insumos com saldo negativo', neg, 'Falta lançar a entrada (compra/NF-e) ou houve baixa a mais. Registre a entrada no Cadastro de Insumos.');
+
+    // 2) Produto acabado: saldo não fecha (envasado − PDV − TAP − descarte)
+    var difer = [];
+    (dadosERP.produtosAcabados || []).forEach(function(p) {
+        var esperado = (p.quantidade || 0) - (p.pdv || 0) - (p.taps || 0) - (p.descartado || 0);
+        if (Math.abs((p.camaraFria || 0) - esperado) > 0.05) difer.push('Lote ' + p.lote + ' · ' + _r8RotuloEmbalagem(p) + ': Câmara Fria ' + fmt(p.camaraFria) + ' L, esperado ' + fmt(esperado) + ' L');
+    });
+    add('Produto acabado com saldo que não fecha', difer, 'Envasado − PDV − TAP − descarte deveria igualar o saldo da Câmara Fria.');
+
+    // 3) Produto acabado em barril que não está no cadastro de embalagens
+    var semCad = [];
+    (dadosERP.produtosAcabados || []).forEach(function(p) {
+        if (p.embalagemCodigo && !(dadosERP.barris || []).some(function(b){ return b.codigo === p.embalagemCodigo; }))
+            semCad.push('Lote ' + p.lote + ' · barril ' + p.embalagemCodigo + ' não existe em Cadastro → Embalagens');
+    });
+    add('Produto acabado sem barril cadastrado', semCad, 'Cadastre o barril ou corrija o Envase da ficha.');
+
+    // 4) Barril com líquido na Câmara Fria mas status diferente de "Em Uso"
+    var statusErr = [];
+    (dadosERP.produtosAcabados || []).forEach(function(p) {
+        if (!p.embalagemCodigo || (p.camaraFria || 0) <= 0.001) return;
+        var b = (dadosERP.barris || []).find(function(x){ return x.codigo === p.embalagemCodigo; });
+        if (b && b.status !== 'Em Uso') statusErr.push('Barril ' + b.codigo + ' está "' + (b.status || '—') + '" mas tem ' + fmt(p.camaraFria) + ' L (lote ' + p.lote + ')');
+    });
+    add('Barris com chope mas status errado', statusErr, 'Um barril cheio deve estar "Em Uso".');
+
+    // 5) Vendas PDV/TAP sem barril vinculado
+    var vSem = [];
+    (dadosERP.vendasPDV || []).forEach(function(v){ if (!v.embalagemCodigo && /barril/i.test(v.tipoEmbalagem || 'barril')) vSem.push('PDV ' + (v.data || '') + ' · lote ' + v.lote + ' · ' + fmt(v.quantidade) + ' L'); });
+    (dadosERP.vendasTaps || []).forEach(function(v){ if (!v.embalagemCodigo && /barril/i.test(v.tipoEmbalagem || 'barril')) vSem.push('TAP ' + (v.data || '') + ' · lote ' + v.lote + ' · ' + fmt(v.quantidade) + ' L'); });
+    add('Vendas sem barril vinculado', vSem, 'Vendas antigas, feitas antes de o barril ser obrigatório. Novas vendas já exigem o barril.');
+
+    // 6) Descartes de produto sem barril
+    var dSem = (dadosERP.movimentacoesEstoque || []).filter(function(m){ return m.produto && m.tipo === 'saida' && String(m.origem || '').indexOf('Descarte') === 0 && !m.embalagemCodigo; })
+        .map(function(m){ return (m.data || '') + ' · lote ' + (m.lote || '—') + ' · ' + fmt(m.quantidade) + ' L'; });
+    add('Descartes de produto sem barril', dSem, 'Descartes feitos antes da baixa por barril.');
+
+    // 7) Insumos ligados a uma compra que não existe mais
+    var comprasIds = {};
+    ((dadosERP.financeiro && dadosERP.financeiro.r8c) || []).forEach(function(c){ comprasIds[c.id] = 1; });
+    var orfaos = (dadosERP.insumos || []).filter(function(i){ return i.origemCompraId && !comprasIds[i.origemCompraId]; })
+        .map(function(i){ return i.codigo + ' — ' + (i.descricao || ''); });
+    add('Insumos ligados a compra inexistente', orfaos, 'A compra foi excluída em outro lugar; o vínculo ficou solto.');
+
+    var total = secoes.reduce(function(a, x){ return a + x.itens.length; }, 0);
+    var html = '<div style="font-weight:800;font-size:17px;color:#2c1810;margin-bottom:4px">🔎 Conferência de Estoque</div>'
+        + '<div style="font-size:12px;color:#7a6a5a;margin-bottom:12px">' + (total ? total + ' ponto(s) para revisar.' : 'Tudo certo: nenhuma inconsistência encontrada.') + '</div>'
+        + secoes.map(function(x) {
+            var ok = !x.itens.length;
+            return '<div style="border:1.5px solid ' + (ok ? '#bbf7d0' : '#fecaca') + ';background:' + (ok ? '#f0fdf4' : '#fef2f2') + ';border-radius:12px;padding:10px 12px;margin-bottom:8px">'
+                + '<div style="font-weight:800;font-size:13px;color:' + (ok ? '#166534' : '#991b1b') + '">' + (ok ? '✔ ' : '⚠ ') + R8.esc(x.titulo) + (ok ? '' : ' (' + x.itens.length + ')') + '</div>'
+                + (ok ? '' : '<div style="font-size:11px;color:#7a6a5a;margin:3px 0 5px">' + R8.esc(x.dica) + '</div>'
+                    + x.itens.slice(0, 8).map(function(t){ return '<div style="font-size:11.5px;color:#57534e;padding:2px 0">• ' + R8.esc(t) + '</div>'; }).join('')
+                    + (x.itens.length > 8 ? '<div style="font-size:11px;color:#a8a29e">… e mais ' + (x.itens.length - 8) + '</div>' : ''))
+                + '</div>';
+        }).join('');
+    var ov = document.getElementById('r8ConferenciaOverlay');
+    if (ov) ov.remove();
+    ov = document.createElement('div');
+    ov.id = 'r8ConferenciaOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:99999;display:flex;align-items:flex-end;justify-content:center';
+    ov.innerHTML = '<div style="background:#fff;width:100%;max-width:560px;max-height:88vh;overflow:auto;border-radius:18px 18px 0 0;padding:18px 16px 24px">'
+        + html + '<button type="button" onclick="document.getElementById(\'r8ConferenciaOverlay\').remove()" style="width:100%;margin-top:6px;border:none;background:#2c1810;color:#f0c674;border-radius:12px;padding:12px;font-weight:800;font-size:14px;cursor:pointer">Fechar</button></div>';
+    ov.addEventListener('click', function(e){ if (e.target === ov) ov.remove(); });
+    document.body.appendChild(ov);
+    return secoes;
+};
+window._r8IrParaBaixaInsumo = function(codigo) {
+    irParaTelaERP('telaBaixaEstoque');
+    setTimeout(function(){
+        _mudarAbaBaixaEstoque('insumo');
+        var sel = document.getElementById('baixaInsumoCodigo');
+        if (sel) { sel.value = codigo; _r8AtualizarSaldoBaixaInsumo(); }
+    }, 60);
+};
 window.confirmarBaixaInsumo = function() {
     var cod = document.getElementById('baixaInsumoCodigo')?.value;
     var qtd = parseFloat(document.getElementById('baixaInsumoQtd')?.value);
@@ -4778,44 +4867,74 @@ window.confirmarBaixaInsumo = function() {
     setTimeout(_renderizarAlertasEstoque, 200);
 };
 
-// Só lista lotes com saldo em Câmara Fria (descarte de produto já vendido
-// não se aplica aqui — isso seria uma devolução, fluxo diferente).
-function _r8PopularSelectBaixaProduto() {
+// Baixa/descarte de produto acabado SEMPRE vinculada a uma embalagem (barril)
+// específica: cada barril envasado é um registro próprio em Produto Acabado
+// (lote + código do barril). A chave usada aqui é a mesma das Vendas PDV/TAP.
+function _r8ChaveProduto(p) { return p.lote + '|' + (p.embalagemCodigo || p.tipoEmbalagem || ''); }
+function _r8ProdutoPorChave(chave) {
+    var partes = String(chave || '').split('|');
+    var lote = partes[0], emb = partes.length > 1 ? partes[1] : '';
+    return (dadosERP.produtosAcabados || []).find(function(p){
+        return p.lote === lote && (p.embalagemCodigo || p.tipoEmbalagem || '') === emb;
+    });
+}
+function _r8RotuloEmbalagem(p) {
+    return p.embalagemCodigo
+        ? ((p.tipoEmbalagem || 'Barril') + ' ' + p.embalagemCodigo)
+        : ((p.tipoEmbalagem || 'Embalagem') + ' (sem cadastro individual)');
+}
+// Lista cada barril/embalagem com saldo em Câmara Fria (descarte de produto já
+// vendido não se aplica aqui — isso seria uma devolução, fluxo diferente).
+function _r8PopularSelectBaixaProduto(chaveSelecionada) {
     var sel = document.getElementById('baixaProdutoLote');
     if (!sel) return;
-    var lotesVistos = {}, opcoes = [];
+    var opcoes = [];
     (dadosERP.produtosAcabados || []).forEach(function(p){
-        if (!p.lote || lotesVistos[p.lote]) return;
+        if (!p.lote) return;
         var camara = parseFloat(p.camaraFria) || 0;
         if (camara <= 0.001) return;
-        lotesVistos[p.lote] = true;
-        opcoes.push({lote:p.lote, estilo:p.estilo, camaraFria:camara});
+        opcoes.push({chave:_r8ChaveProduto(p), lote:p.lote, estilo:p.estilo, rotulo:_r8RotuloEmbalagem(p), camaraFria:camara,
+                     saiu:((p.pdv||0)+(p.taps||0))>0});
     });
-    sel.innerHTML = '<option value="">Selecione...</option>' + opcoes.map(function(o){
-        return '<option value="'+R8.esc(o.lote)+'">'+R8.esc(o.lote)+' — '+R8.esc(o.estilo||'')+' — '+o.camaraFria.toFixed(2)+' L</option>';
+    opcoes.sort(function(a,b){ return a.chave.localeCompare(b.chave); });
+    sel.innerHTML = '<option value="">Selecione o barril...</option>' + opcoes.map(function(o){
+        return '<option value="'+R8.esc(o.chave)+'">'+R8.esc(o.rotulo)+' — Lote '+R8.esc(o.lote)+' — '+R8.esc(o.estilo||'')+' — '+o.camaraFria.toFixed(2)+' L'+(o.saiu?' (barril já vendido: resíduo)':'')+'</option>';
     }).join('');
-    var info = document.getElementById('baixaProdutoSaldoInfo'); if (info) info.textContent = '';
+    if (chaveSelecionada) sel.value = chaveSelecionada;
+    window._r8AtualizarSaldoBaixaProduto();
 }
 window._r8AtualizarSaldoBaixaProduto = function() {
-    var lote = document.getElementById('baixaProdutoLote')?.value;
+    var chave = document.getElementById('baixaProdutoLote')?.value;
     var info = document.getElementById('baixaProdutoSaldoInfo');
     if (!info) return;
-    if (!lote) { info.textContent = ''; return; }
-    var p = (dadosERP.produtosAcabados||[]).find(function(x){ return x.lote === lote; });
-    info.textContent = 'Saldo na Câmara Fria: ' + (parseFloat(p && p.camaraFria)||0).toFixed(2) + ' L';
+    if (!chave) { info.textContent = ''; return; }
+    var p = _r8ProdutoPorChave(chave);
+    info.textContent = p ? ('Saldo na Câmara Fria — ' + _r8RotuloEmbalagem(p) + ' (Lote ' + p.lote + '): ' + (parseFloat(p.camaraFria)||0).toFixed(2) + ' L') : '';
+};
+window._r8PreencherBaixaTotalProduto = function() {
+    var p = _r8ProdutoPorChave(document.getElementById('baixaProdutoLote')?.value);
+    if (!p) { R8.toast.aviso('Selecione o barril primeiro.'); return; }
+    document.getElementById('baixaProdutoQtd').value = (parseFloat(p.camaraFria)||0).toFixed(2);
+};
+window._r8IrParaBaixaProduto = function(chave) {
+    irParaTelaERP('telaBaixaEstoque');
+    setTimeout(function(){ _mudarAbaBaixaEstoque('produto'); _r8PopularSelectBaixaProduto(chave); }, 60);
 };
 window.confirmarBaixaProdutoAcabado = function() {
-    var lote = document.getElementById('baixaProdutoLote')?.value;
+    var chave = document.getElementById('baixaProdutoLote')?.value;
     var qtd = parseFloat(document.getElementById('baixaProdutoQtd')?.value);
     var motivo = document.getElementById('baixaProdutoMotivo')?.value || 'Outro';
     var obs = document.getElementById('baixaProdutoObs')?.value || '';
-    if (!lote) { R8.toast.aviso('Selecione o lote.'); return; }
+    if (!chave) { R8.toast.aviso('Selecione o barril (lote/embalagem) a baixar.'); return; }
     if (!qtd || qtd <= 0) { R8.toast.aviso('Informe uma quantidade válida.'); return; }
-    var p = (dadosERP.produtosAcabados||[]).find(function(x){ return x.lote === lote; });
-    if (!p) { R8.toast.erro('Produto não encontrado.'); return; }
+    var p = _r8ProdutoPorChave(chave);
+    if (!p) { R8.toast.erro('Barril/produto não encontrado.'); return; }
     var saldoAntes = parseFloat(p.camaraFria) || 0;
-    if (qtd > saldoAntes && !confirm('Atenção: a quantidade informada é maior que o saldo em Câmara Fria (' + saldoAntes.toFixed(2) + ' L). Confirmar mesmo assim?')) return;
+    if (qtd > saldoAntes + 0.001) { R8.toast.erro('Quantidade maior que o saldo do barril (' + saldoAntes.toFixed(2) + ' L). Ajuste a quantidade.'); return; }
+    var lote = p.lote;
     p.camaraFria = Math.max(0, parseFloat((saldoAntes - qtd).toFixed(2)));
+    p.descartado = parseFloat(((p.descartado || 0) + qtd).toFixed(2));
+    p.status = p.camaraFria === 0 ? 'Esgotado' : (p.camaraFria < 10 ? 'Baixo' : 'Disponível');
     if (!dadosERP.movimentacoesEstoque) dadosERP.movimentacoesEstoque = [];
     dadosERP.movimentacoesEstoque.push({
         id: Date.now() + '_descprod',
@@ -4823,6 +4942,8 @@ window.confirmarBaixaProdutoAcabado = function() {
         tipo: 'saida',
         produto: p.estilo || 'Produto Acabado',
         lote: lote,
+        tipoEmbalagem: p.tipoEmbalagem || '',
+        embalagemCodigo: p.embalagemCodigo || '',
         quantidade: qtd,
         origem: 'Descarte - ' + motivo,
         destino: 'Descarte',
@@ -4830,12 +4951,27 @@ window.confirmarBaixaProdutoAcabado = function() {
         saldoAnterior: saldoAntes,
         saldoAtual: p.camaraFria
     });
+    // Barril esvaziado por descarte e fisicamente na cervejaria (nunca saiu em
+    // venda PDV/TAP): vai direto para Aguardando Sanitização.
+    var avisoBarril = '';
+    if (p.camaraFria === 0 && p.embalagemCodigo && !((p.pdv||0) > 0 || (p.taps||0) > 0)) {
+        var b = (dadosERP.barris || []).find(function(x){ return x.codigo === p.embalagemCodigo; });
+        if (b && b.status === 'Em Uso') {
+            b.status = 'Aguardando Sanitização';
+            if (!dadosERP.recebimentosBarris) dadosERP.recebimentosBarris = [];
+            dadosERP.recebimentosBarris.push({ codigo: b.codigo, lote: b.loteAtual || lote, data: new Date().toISOString().slice(0,10), motivo: 'Descarte total' });
+            avisoBarril = ' Barril ' + b.codigo + ' foi para Aguardando Sanitização.';
+        }
+    }
     salvarDadosFirebase();
-    if (typeof registrarAuditoria === 'function') registrarAuditoria('Estoque', 'baixa', 'Produto lote ' + lote + ': -' + qtd + 'L (' + motivo + ')');
-    R8.toast.ok('Baixa registrada!');
+    if (typeof registrarAuditoria === 'function') registrarAuditoria('Estoque', 'baixa', 'Produto lote ' + lote + (p.embalagemCodigo ? ' / ' + p.embalagemCodigo : '') + ': -' + qtd + 'L (' + motivo + ')');
+    R8.toast.ok('Baixa registrada no ' + _r8RotuloEmbalagem(p) + '.' + avisoBarril);
     document.getElementById('baixaProdutoQtd').value = '';
     document.getElementById('baixaProdutoObs').value = '';
     _r8PopularSelectBaixaProduto();
+    try { if (typeof atualizarListaBarrisERP === 'function') atualizarListaBarrisERP(); } catch (e) {}
+    try { if (typeof atualizarControleEmbalagens === 'function') atualizarControleEmbalagens(); } catch (e) {}
+    try { if (typeof window._renderFilaSanitizacaoPendente === 'function') window._renderFilaSanitizacaoPendente(); } catch (e) {}
     setTimeout(_renderizarAlertasEstoque, 200);
 };
 // ── Mesmo padrão de ledger dos Insumos, aplicado aos Sais de Correção de
@@ -5799,6 +5935,7 @@ function _movListaFiltrada() {
             (m.lote       && m.lote.toLowerCase().includes(busca)) ||
             (m.descricao  && m.descricao.toLowerCase().includes(busca)) ||
             (m.produto    && m.produto.toLowerCase().includes(busca)) ||
+            (m.embalagemCodigo && String(m.embalagemCodigo).toLowerCase().includes(busca)) ||
             (m.codigo     && m.codigo.toLowerCase().includes(busca));
         var matchTipo   = !tipo   || m.tipo === tipo;
         var matchOrigem = !origem || (m.origem && m.origem.toLowerCase().includes(origem.toLowerCase()));
@@ -5848,6 +5985,7 @@ function _renderMovPaginado() {
         if (m.codigo)       subtit.push('Cód: ' + R8.esc(m.codigo));
         if (m.tipoInsumo)   subtit.push(R8.esc(m.tipoInsumo));
         if (m.lote)         subtit.push('Lote: ' + R8.esc(m.lote));
+        if (m.embalagemCodigo) subtit.push(R8.esc(m.tipoEmbalagem || 'Embalagem') + ': ' + R8.esc(m.embalagemCodigo));
         if (m.origem)       subtit.push(R8.esc(m.origem));
         if (m.destino && m.destino !== m.origem) subtit.push('→ ' + R8.esc(m.destino));
 
@@ -11415,6 +11553,7 @@ function atualizarTabelaEstoqueAgrupada(){
             +   '<div class="estoque-card-meta"><i class="fas fa-history"></i> <span>' + movTxt + '</span></div>'
             +   '<div class="estoque-card-meta"><i class="fas fa-dollar-sign"></i> <span>R$ ' + d.valorTotal.toFixed(2) + '</span></div>'
             + '</div>'
+            + (d.qtdTotal > 0 ? '<button type="button" onclick="_r8IrParaBaixaInsumo(\'' + R8.esc(String(d.codigo)).replace(/'/g, "\\'") + '\')" style="grid-column:1/-1;margin-top:8px;border:1px solid #fca5a5;background:#fef2f2;color:#991b1b;border-radius:9px;padding:7px 10px;font-size:12px;font-weight:700;cursor:pointer"><i class="fas fa-trash-alt"></i> Dar baixa</button>' : '')
             + '</div>';
     }).join('');
 }
@@ -11504,7 +11643,7 @@ window._sincronizarProdutosAcabadosDeFichas = function() {
     // que esta tela é aberta — sem precisar de reset manual nem apagar
     // histórico de vendas.
     dadosERP.produtosAcabados.forEach(function(p) {
-        var maxPossivel = (p.quantidade || 0) - (p.pdv || 0) - (p.taps || 0);
+        var maxPossivel = (p.quantidade || 0) - (p.pdv || 0) - (p.taps || 0) - (p.descartado || 0);
         if ((p.camaraFria || 0) > maxPossivel + 0.01) {
             p.camaraFria = Math.max(0, parseFloat(maxPossivel.toFixed(2)));
         }
@@ -11728,10 +11867,16 @@ function atualizarTabelaProdutoAcabado(){
             if ((it.camaraFria||0) > 0) partes.push('<span style="color:#0369a1;font-weight:700">Câmara Fria ' + (it.camaraFria||0).toFixed(1) + 'L</span>');
             if ((it.pdv||0) > 0) partes.push('<span style="color:#c49a2b;font-weight:700">PDV ' + (it.pdv||0).toFixed(1) + 'L</span>');
             if ((it.taps||0) > 0) partes.push('<span style="color:#7c3aed;font-weight:700">TAP ' + (it.taps||0).toFixed(1) + 'L</span>');
+            if ((it.descartado||0) > 0) partes.push('<span style="color:#991b1b;font-weight:700">Descarte ' + (it.descartado||0).toFixed(1) + 'L</span>');
             if (!partes.length) partes.push('<span style="color:#dc2626;font-weight:700">Esgotado</span>');
+            var chaveBaixa = String(it.lote + '|' + (it.embalagemCodigo || it.tipoEmbalagem || '')).replace(/\\/g,'\\\\').replace(/'/g, "\\'");
+            var btnBaixa = ((it.camaraFria||0) > 0)
+                ? '<button type="button" onclick="_r8IrParaBaixaProduto(\'' + R8.esc(chaveBaixa) + '\')" style="border:1px solid #fca5a5;background:#fef2f2;color:#991b1b;border-radius:8px;padding:3px 9px;font-size:11px;font-weight:700;cursor:pointer"><i class="fas fa-trash-alt"></i> Baixa</button>'
+                : '';
             return '<div class="r8-card-item">'
                 +   '<span style="color:var(--dark);font-weight:600">' + rotulo + '</span>'
                 +   '<span style="display:flex;gap:8px;flex-wrap:wrap">' + partes.join('') + '</span>'
+                +   btnBaixa
                 +   '<span style="color:#8a7a6c">' + dataItem + '</span>'
                 + '</div>';
         }).join('');
@@ -11802,6 +11947,17 @@ function popularSelectLotesDisponveis(selectId,estiloInputId){
 }
 window.popularSelectLotesDisponveis=popularSelectLotesDisponveis;
 
+// Acha o registro de Produto Acabado (barril) de uma venda: pelo CÓDIGO DO BARRIL
+// quando a venda o tem (evita estornar no barril errado de um lote com vários),
+// e só cai para lote + tipo de embalagem em vendas antigas sem código.
+function _r8ProdutoDaVenda(v) {
+    var lista = dadosERP.produtosAcabados || [];
+    if (v.embalagemCodigo) {
+        var exato = lista.find(function(p){ return p.lote === v.lote && (p.embalagemCodigo || '') === v.embalagemCodigo; });
+        if (exato) return exato;
+    }
+    return lista.find(function(p){ return p.lote === v.lote && (!v.tipoEmbalagem || (p.tipoEmbalagem||'') === v.tipoEmbalagem); });
+}
 function darBaixaEstoque(loteChave, qtd, tipo, destino) {
     // loteChave vem como "lote|embalagemCodigo" (barril específico) ou
     // "lote|Lata" (embalagem agregada, sem cadastro individual).
@@ -11974,7 +12130,7 @@ window.definirRetornoBarril=function(tipo, idx){
 window.removerVendaPDV=function(i){confirmarAcao({titulo:'Remover venda PDV',msg:'Tem certeza que deseja remover este registro de venda? O estoque de produto acabado será estornado. Esta ação não pode ser desfeita.',labelOk:'Remover',onConfirm:function(){
     var v = dadosERP.vendasPDV[i];
     if (v) {
-        var prod = (dadosERP.produtosAcabados||[]).find(function(p){ return p.lote === v.lote && (!v.tipoEmbalagem || (p.tipoEmbalagem||'') === v.tipoEmbalagem); });
+        var prod = _r8ProdutoDaVenda(v);
         if (prod) {
             var saldoAntes = prod.camaraFria || 0;
             prod.pdv = Math.max(0, (prod.pdv||0) - (v.quantidade||0));
@@ -11984,6 +12140,7 @@ window.removerVendaPDV=function(i){confirmarAcao({titulo:'Remover venda PDV',msg
             dadosERP.movimentacoesEstoque.push({
                 id: Date.now()+'_estorno_pdv', data: obterDataHora(), tipo:'entrada',
                 produto: prod.estilo, quantidade: v.quantidade||0, lote: v.lote,
+                tipoEmbalagem: prod.tipoEmbalagem||'', embalagemCodigo: prod.embalagemCodigo||'',
                 origem: 'PDV (estorno por remoção de venda)',
                 saldoAnterior: saldoAntes, saldoAtual: prod.camaraFria
             });
@@ -12049,7 +12206,7 @@ window.aplicarFiltrosVendasTAP=aplicarFiltrosVendasTAP;
 window.removerVendaTAP=function(i){confirmarAcao({titulo:'Remover transferência',msg:'Tem certeza que deseja remover este registro de transferência? O estoque de produto acabado será estornado. Esta ação não pode ser desfeita.',labelOk:'Remover',onConfirm:function(){
     var v = dadosERP.vendasTaps[i];
     if (v) {
-        var prod = (dadosERP.produtosAcabados||[]).find(function(p){ return p.lote === v.lote && (!v.tipoEmbalagem || (p.tipoEmbalagem||'') === v.tipoEmbalagem); });
+        var prod = _r8ProdutoDaVenda(v);
         if (prod) {
             var saldoAntes = prod.camaraFria || 0;
             prod.taps = Math.max(0, (prod.taps||0) - (v.quantidade||0));
@@ -12059,6 +12216,7 @@ window.removerVendaTAP=function(i){confirmarAcao({titulo:'Remover transferência
             dadosERP.movimentacoesEstoque.push({
                 id: Date.now()+'_estorno_tap', data: obterDataHora(), tipo:'entrada',
                 produto: prod.estilo, quantidade: v.quantidade||0, lote: v.lote,
+                tipoEmbalagem: prod.tipoEmbalagem||'', embalagemCodigo: prod.embalagemCodigo||'',
                 origem: 'TAP (estorno por remoção de transferência)',
                 saldoAnterior: saldoAntes, saldoAtual: prod.camaraFria
             });
@@ -17586,7 +17744,7 @@ if(document.readyState === 'loading'){
 
     <!-- ── ESTOQUE: BAIXA/DESCARTE (Insumos e Produto Acabado) ── -->
     <div id="telaBaixaEstoque" class="tela">
-        <div class="hdr"><div class="hdr-linha1"><button class="btn-tela-voltar" onclick="irParaTelaERP('telaSubEstoque')"><i class="fas fa-arrow-left"></i> Voltar</button><h2>Baixa de Estoque</h2></div></div>
+        <div class="hdr"><div class="hdr-linha1"><button class="btn-tela-voltar" onclick="irParaTelaERP('telaSubEstoque')"><i class="fas fa-arrow-left"></i> Voltar</button><h2>Baixa de Estoque</h2></div><div class="hdr-acoes"><button class="btn-tela-pdf" style="background:#2c1810;color:#f0c674" onclick="_r8ConferirEstoque()"><i class="fas fa-clipboard-check"></i> Conferir estoque</button></div></div>
         <p style="font-size:11.5px;color:#7a6a5a;text-align:center;margin:6px 0 12px;font-style:italic">Registre aqui a baixa de insumos ou produtos perdidos (vencidos, danificados, estragados) — sai do saldo e fica registrado nas Movimentações.</p>
 
         <div style="display:flex;gap:6px;margin:0 0 12px;background:#f4ede0;border-radius:14px;padding:5px">
@@ -17597,16 +17755,16 @@ if(document.readyState === 'loading'){
         <div id="tabConteudoBaixa_insumo">
             <div class="campo-linha"><label>Insumo</label><select id="baixaInsumoCodigo" onchange="_r8AtualizarSaldoBaixaInsumo()"><option value="">Selecione...</option></select></div>
             <div class="campo-linha" id="baixaInsumoSaldoInfo" style="font-size:12px;color:#64748b;margin-top:-6px"></div>
-            <div class="campo-linha"><label>Quantidade a descartar</label><input type="number" id="baixaInsumoQtd" step="0.01" min="0" placeholder="0,00"></div>
-            <div class="campo-linha"><label>Motivo</label><select id="baixaInsumoMotivo"><option value="Vencido">Vencido</option><option value="Danificado">Danificado/Contaminado</option><option value="Outro">Outro</option></select></div>
+            <div class="campo-linha"><label>Quantidade a baixar</label><input type="number" id="baixaInsumoQtd" step="0.01" min="0" placeholder="0,00"></div>
+            <div class="campo-linha"><label>Motivo</label><select id="baixaInsumoMotivo"><option value="Vencido">Vencido</option><option value="Danificado">Danificado/Contaminado</option><option value="Perda/Quebra">Perda / Quebra</option><option value="Consumo fora de receita">Consumo fora de receita (uso interno)</option><option value="Ajuste de inventário">Ajuste de inventário (contagem)</option><option value="Outro">Outro</option></select></div>
             <div class="campo-linha"><label>Observação (opcional)</label><textarea id="baixaInsumoObs" rows="2" placeholder="Detalhes..."></textarea></div>
             <button class="btn-add-item" style="width:100%;background:#991b1b;color:#fff" onclick="confirmarBaixaInsumo()"><i class="fas fa-trash-alt"></i> Confirmar Baixa</button>
         </div>
 
         <div id="tabConteudoBaixa_produto" style="display:none">
-            <div class="campo-linha"><label>Lote</label><select id="baixaProdutoLote" onchange="_r8AtualizarSaldoBaixaProduto()"><option value="">Selecione...</option></select></div>
+            <div class="campo-linha"><label>Barril / embalagem (lote)</label><select id="baixaProdutoLote" onchange="_r8AtualizarSaldoBaixaProduto()"><option value="">Selecione...</option></select></div>
             <div class="campo-linha" id="baixaProdutoSaldoInfo" style="font-size:12px;color:#64748b;margin-top:-6px"></div>
-            <div class="campo-linha"><label>Quantidade a descartar (Litros, na Câmara Fria)</label><input type="number" id="baixaProdutoQtd" step="0.01" min="0" placeholder="0,00"></div>
+            <div class="campo-linha"><label>Quantidade a descartar (Litros, na Câmara Fria)</label><div style="display:flex;gap:8px"><input type="number" id="baixaProdutoQtd" step="0.01" min="0" placeholder="0,00" style="flex:1"><button type="button" onclick="_r8PreencherBaixaTotalProduto()" style="flex:0 0 auto;border:1.5px solid #e5d9bd;background:#fff;color:#6b5847;border-radius:10px;padding:0 12px;font-weight:700;font-size:12px;cursor:pointer">Barril todo</button></div></div>
             <div class="campo-linha"><label>Motivo</label><select id="baixaProdutoMotivo"><option value="Estragado">Estragado/Contaminado</option><option value="Vencido">Vencido</option><option value="Quebra">Quebra/Acidente</option><option value="Outro">Outro</option></select></div>
             <div class="campo-linha"><label>Observação (opcional)</label><textarea id="baixaProdutoObs" rows="2" placeholder="Detalhes..."></textarea></div>
             <button class="btn-add-item" style="width:100%;background:#991b1b;color:#fff" onclick="confirmarBaixaProdutoAcabado()"><i class="fas fa-trash-alt"></i> Confirmar Baixa</button>
