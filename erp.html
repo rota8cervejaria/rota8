@@ -26,7 +26,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-10-27-1';
+    window.R8_BUILD = '2026-10-27-3';
     (function() {
         var buildVisto = null;
         try { buildVisto = localStorage.getItem('r8_build_visto'); } catch(e){}
@@ -6866,7 +6866,8 @@ window._calcIBU_Tinseth = function(alphaAcid, pesoG, tempFervura, volumeL, og) {
     var bgAlpha = 1.65 * Math.pow(0.000125, og - 1);
     var bgTemp  = (1 - Math.exp(-0.04 * tempFervura)) / 4.15;
     var util    = bgAlpha * bgTemp;
-    return (alphaAcid / 100 * pesoG * util * 7489) / volumeL;
+    // gramas e litros: mg/L de alfa-ácidos × utilização (o fator 7489 só vale para onças/galões)
+    return (alphaAcid / 100 * pesoG * 1000 * util) / volumeL;
 };
 
 // ─── PITCH RATE ──────────────────────────────────────────────
@@ -6875,7 +6876,7 @@ window._calcPitchRate = function() {
     var og   = window._normDens(document.getElementById('producaoOG')?.value) || 1.050;
     var plato = ((og - 1) * 250);
     var cellsNeed = vol * 1000 * 0.75 * plato; // ales: 0.75M cells/mL/°P
-    return (cellsNeed / 1e9).toFixed(1); // em bilhões
+    return (cellsNeed / 1e3).toFixed(0); // milhões → bilhões
 };
 
 // ═══════════════════════════════════════════════════════
@@ -8565,6 +8566,8 @@ window._editarItemProducao = function(containerId, i) {
         document.getElementById('lupuloSelectProducao').value=item.codigo||'';
         document.getElementById('lupuloEtapaProducao').value=item.etapa||'';
         document.getElementById('lupuloTempoProducao').value=item.tempo||'';
+        var _momEd=document.getElementById('lupuloMomentoProducao'); if(_momEd) _momEd.value=item.momento||'durante';
+        _r8AtualizarCamposLupulo();
         document.getElementById('lupuloQtdProducao').value=item.quantidade||'';
         mostrarFormERP('formLupuloProducao');
     } else if(containerId==='listaLevedurasProducao'){
@@ -8695,7 +8698,8 @@ function _renderListaLupulos(){
     _renderItemProducao(window.adicoesLupuloProducao,'listaLupulosProducao','#fff7ed',function(l){
         var ibuTag = l.ibuCalc ? ' <span style="font-size:10px;background:#fef3c7;color:#92400e;padding:1px 5px;border-radius:4px;font-weight:700">≈'+l.ibuCalc+' IBU</span>' : '';
         var alphaTag = l.alphaAcid ? ' [α:'+l.alphaAcid+'%]' : '';
-        return l.descricao+alphaTag+' — '+l.etapa+(l.tempo?' ('+l.tempo+'min)':'')+' — '+l.quantidade+'g'+ibuTag;
+        var _quando=(l.etapa==='Dry Hop')?_r8RotuloMomentoDryHop(l,false):(l.tempo?l.tempo+'min':'');
+        return l.descricao+alphaTag+' — '+l.etapa+(_quando?' ('+_quando+')':'')+' — '+l.quantidade+'g'+ibuTag;
     });
     // Calcular IBU total e atualizar campo producaoIBU
     var ibuTotal = window.adicoesLupuloProducao.reduce(function(a,l){return a+(l.ibuCalc||0);},0);
@@ -8738,10 +8742,27 @@ window.salvarMosturaERP=function(){
     document.getElementById('mosturaNomeProducao').value='';document.getElementById('mosturaTempProducao').value='';document.getElementById('mosturaTempoProducao').value='';
 };
 
+// Dry Hop não tem tempo em minutos: é feito DURANTE a fermentação (~80%, para a
+// biotransformação) ou APÓS a fermentação. Fichas antigas (só com minutos) caem
+// para dias como alternativa de exibição.
+window._r8RotuloMomentoDryHop = function(l, curto) {
+    if (l && l.momento === 'durante') return curto ? 'Durante ferm. (~80%)' : 'durante a fermentação (~80%)';
+    if (l && l.momento === 'apos') return curto ? 'Pós-fermentação' : 'após a fermentação';
+    if (l && l.tempo) { var d = Math.round(l.tempo / 1440 * 10) / 10; return d + ' d'; }
+    return '';
+};
+window._r8AtualizarCamposLupulo = function() {
+    var dry = document.getElementById('lupuloEtapaProducao')?.value === 'Dry Hop';
+    var t = document.getElementById('lupuloTempoWrap'), m = document.getElementById('lupuloMomentoWrap');
+    if (t) t.style.display = dry ? 'none' : '';
+    if (m) m.style.display = dry ? '' : 'none';
+};
 window.salvarLupuloERP=function(){
     var s=document.getElementById('lupuloSelectProducao');var cod=s?.value;
     var etapa=document.getElementById('lupuloEtapaProducao')?.value||'Fervura';
     var tempo=parseFloat(document.getElementById('lupuloTempoProducao')?.value)||0;
+    var momentoDry=(etapa==='Dry Hop')?(document.getElementById('lupuloMomentoProducao')?.value||'durante'):'';
+    if(etapa==='Dry Hop') tempo=0; // dry hop não usa minutos
     var qtd=parseFloat(document.getElementById('lupuloQtdProducao')?.value);
     var alpha=parseFloat(document.getElementById('lupuloAlphaProducao')?.value)||0;
     if(!cod||!etapa||isNaN(qtd)||qtd<=0){R8.toast.aviso('Preencha todos os campos.');return;}
@@ -8754,11 +8775,11 @@ window.salvarLupuloERP=function(){
     if(alpha>0 && etapa==='Fervura' && tempo>0) ibuCalc=_calcIBU_Tinseth(alpha,qtd,tempo,vol,og);
     else if(alpha>0 && etapa==='Whirlpool') ibuCalc=_calcIBU_Tinseth(alpha,qtd,20,vol,og)*0.5;
     else if(alpha>0 && etapa==='First Wort') ibuCalc=_calcIBU_Tinseth(alpha,qtd,60,vol,og)*1.1;
-    var item={codigo:cod,descricao:base.descricao,etapa:etapa,tempo:tempo,quantidade:qtd,unidade:'g',alphaAcid:alpha,ibuCalc:parseFloat(ibuCalc.toFixed(1))};
+    var item={codigo:cod,descricao:base.descricao,etapa:etapa,tempo:tempo,momento:momentoDry,quantidade:qtd,unidade:'g',alphaAcid:alpha,ibuCalc:parseFloat(ibuCalc.toFixed(1))};
     if(_editSecaoProducao==='listaLupulosProducao'&&_editIdxProducao!==null){window.adicoesLupuloProducao[_editIdxProducao]=item;_editIdxProducao=null;_editSecaoProducao=null;}
     else{window.adicoesLupuloProducao.push(item);}
     _renderListaLupulos();fecharFormERP('formLupuloProducao');
-    document.getElementById('lupuloEtapaProducao').value='';document.getElementById('lupuloTempoProducao').value='';document.getElementById('lupuloQtdProducao').value='';
+    document.getElementById('lupuloEtapaProducao').value='';document.getElementById('lupuloTempoProducao').value='';document.getElementById('lupuloQtdProducao').value='';var _mom=document.getElementById('lupuloMomentoProducao');if(_mom)_mom.value='durante';_r8AtualizarCamposLupulo();
 };
 
 window.salvarLeveduraERP=function(){
@@ -13887,12 +13908,17 @@ function gerarPDFFichaLayout(f,filename){
     }catch(e){}
     doc.setTextColor(...TXT);doc.setFont('helvetica','bold');
     {   // Nome da cerveja (somente o nome) no lugar do texto fixo; se a ficha não tiver nome, mantém ROTA 8 CERVEJARIA
-        var _nomeCerv=(window._nomeCervejaFicha(f)||'ROTA 8 CERVEJARIA').toUpperCase(),_fsN=12;
+        var _nomeCerv=(window._nomeCervejaFicha(f)||'ROTA 8 CERVEJARIA').toUpperCase(),_fsN=18;
         doc.setFontSize(_fsN);
-        while(_fsN>7&&doc.getTextWidth(_nomeCerv)>88){_fsN-=0.5;doc.setFontSize(_fsN);}
-        doc.text(_nomeCerv,82,9,{align:'center'}); // centralizado na área do cabeçalho (entre o logo e o quadro de Lote)
+        while(_fsN>8&&doc.getTextWidth(_nomeCerv)>88){_fsN-=0.5;doc.setFontSize(_fsN);} // nomes longos encolhem para caber antes do quadro de Lote
+        doc.text(_nomeCerv,82,12,{align:'center'}); // centralizado na área do cabeçalho (entre o logo e o quadro de Lote)
     }
-    doc.setTextColor(...TXT);doc.setFontSize(18);doc.setFont('helvetica','bold');doc.text((f.estilo||'SEM ESTILO').toUpperCase(),38,20);
+    {   // Estilo (agora no tamanho menor, 12) — também encolhe se for muito longo
+        var _estiloTxt=(f.estilo||'SEM ESTILO').toUpperCase(),_fsE=12;
+        doc.setTextColor(...TXT);doc.setFont('helvetica','bold');doc.setFontSize(_fsE);
+        while(_fsE>7&&doc.getTextWidth(_estiloTxt)>89){_fsE-=0.5;doc.setFontSize(_fsE);}
+        doc.text(_estiloTxt,38,20); // mesma posição de antes (à esquerda, alinhado com "FICHA TÉCNICA DE PRODUÇÃO")
+    }
     doc.setTextColor(...TXT);doc.setFontSize(10.5);doc.setFont('helvetica','bold');doc.text('FICHA TÉCNICA DE PRODUÇÃO',38,26);
     // Bloco info direito
     bloco(130,2,72,26,255,255,255,null);
@@ -14330,7 +14356,7 @@ function gerarPDFFichaLayout(f,filename){
     }else{
         bloco(mL,yy,cW,LHH,...LUPCOR,null);
         let lpx=mL;
-        [['Lúpulo',cW*0.32],['AA (%)',cW*0.13],['Etapa',cW*0.2],['Tempo',cW*0.15],['Qtde',cW*0.2]].forEach(([t,w])=>{
+        [['Lúpulo',cW*0.32],['AA (%)',cW*0.13],['Etapa',cW*0.2],['Tempo / Momento',cW*0.15],['Qtde',cW*0.2]].forEach(([t,w])=>{
             doc.setTextColor(255,235,210);doc.setFontSize(7);doc.setFont('helvetica','bold');
             doc.text(t,lpx+w/2,hdrY(yy,LHH),{align:'center'});lpx+=w;
         });yy+=LHH;
@@ -14340,7 +14366,7 @@ function gerarPDFFichaLayout(f,filename){
             bloco(lx2,yy,cW*0.32,LH,r,g,b,(l.descricao||'—').substring(0,22),false,20,20,30,7,'center');lx2+=cW*0.32;
             bloco(lx2,yy,cW*0.13,LH,r,g,b,l.alphaAcid?l.alphaAcid+'%':'—',true,150,80,10,8,'center');lx2+=cW*0.13;
             bloco(lx2,yy,cW*0.2,LH,r,g,b,l.etapa||'—',false,20,20,30,7,'center');lx2+=cW*0.2;
-            bloco(lx2,yy,cW*0.15,LH,r,g,b,(l.tempo||'—')+' min',false,20,20,30,7,'center');lx2+=cW*0.15;
+            bloco(lx2,yy,cW*0.15,LH,r,g,b,(l.etapa==='Dry Hop'?(_r8RotuloMomentoDryHop(l,true)||'—'):(l.tempo?l.tempo+' min':'—')),false,20,20,30,7,'center');lx2+=cW*0.15;
             bloco(lx2,yy,cW*0.2,LH,r,g,b,(l.quantidade||'—')+' '+(l.unidade||'g'),true,150,80,10,8,'center');
             yy+=LH;
         });
@@ -14410,7 +14436,7 @@ function gerarPDFFichaLayout(f,filename){
             var t=l.trim();
             var ult=(i===_lsA.length-1);
             var pal=t.split(' ').filter(function(p){return p!=='';});
-            if(ult||pal.length<=1||doc.getTextWidth(t)<_wA*0.85){doc.text(t,_xA,yL);return;}
+            if(true){doc.text(t,_xA,yL);return;} // notas técnicas: texto à esquerda (justificar esticava as palavras)
             var esp=(_wA-doc.getTextWidth(pal.join('')))/(pal.length-1);
             var xp=_xA;
             pal.forEach(function(p){doc.text(p,xp,yL);xp+=doc.getTextWidth(p)+esp;});
@@ -16396,7 +16422,7 @@ window._updatePitchRateBox = function() {
     if (!el || !vol) return;
     var plato = (og - 1) * 250;
     var taxa  = tipo === 'lager' ? 1.5 : 0.75;
-    var cells = (vol * 1000 * taxa * plato / 1e9).toFixed(2);
+    var cells = (vol * 1000 * taxa * plato / 1e3).toFixed(0); // vol(mL) × M células/mL/°P = milhões de células → ÷1000 = bilhões
     el.textContent = cells + ' bilhões de células (' + (tipo==='lager'?'lager: 1,5M':'ale: 0,75M') + '/mL/°P)';
 };
 window._calcIBUPreview = function() {
@@ -18081,7 +18107,7 @@ if(document.readyState === 'loading'){
         <div id="formLupuloProducao" class="form-flutuante"><h3>Adição de Lúpulo</h3>
 <div class="campo-linha"><label>Lúpulo *</label><select id="lupuloSelectProducao" onchange="_calcIBUPreview()"></select></div>
 <div class="campo-linha"><label>Alpha Acid (%)</label><input type="number" step="0.1" id="lupuloAlphaProducao" placeholder="Ex: 8.5" oninput="_calcIBUPreview()"></div>
-<div class="linha-dupla"><div><label>Etapa</label><select id="lupuloEtapaProducao"><option value="Fervura">🔥 Fervura</option><option value="Whirlpool">🌀 Whirlpool</option><option value="Dry Hop">❄️ Dry Hop</option><option value="First Wort">🌾 First Wort</option></select></div><div><label>Tempo (min)</label><input type="number" id="lupuloTempoProducao" placeholder="-" oninput="_calcIBUPreview()"></div></div>
+<div class="linha-dupla"><div><label>Etapa</label><select id="lupuloEtapaProducao" onchange="_r8AtualizarCamposLupulo();_calcIBUPreview()"><option value="Fervura">🔥 Fervura</option><option value="Whirlpool">🌀 Whirlpool</option><option value="Dry Hop">❄️ Dry Hop</option><option value="First Wort">🌾 First Wort</option></select></div><div id="lupuloTempoWrap"><label>Tempo (min)</label><input type="number" id="lupuloTempoProducao" placeholder="-" oninput="_calcIBUPreview()"></div><div id="lupuloMomentoWrap" style="display:none"><label>Momento do Dry Hop</label><select id="lupuloMomentoProducao"><option value="durante">Durante a fermentação (~80% — biotransformação)</option><option value="apos">Após a fermentação</option></select></div></div>
 <div class="campo-linha"><label>Quantidade (g)</label><input type="number" step="0.1" id="lupuloQtdProducao" placeholder="-" oninput="_calcIBUPreview()"></div>
 <div id="ibuPreviewBox" style="display:none;background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:700;color:#92400e;margin-bottom:8px">⚗️ IBU estimado desta adição: <span id="ibuPreviewVal">0</span> IBU</div>
 <button class="btn-salvar" onclick="salvarLupuloERP()"><i class="fas fa-check-circle"></i> Salvar</button><button class="btn-cancelar" onclick="fecharFormERP('formLupuloProducao')"><i class="fas fa-times-circle"></i> Cancelar</button></div>
@@ -21815,7 +21841,7 @@ window._r8FinInit = function(pagina) {
             var _fabBB = (l.ref && l.ref.fab) || '';
             if (_fabBB) insumos[base.codigo].produtorBB = _fabBB;
             if (l.grupo === 'lupulo') {
-                window.adicoesLupuloProducao.push({ codigo: base.codigo, descricao: base.descricao, etapa: l.ref.etapa, tempo: l.ref.min || 0, quantidade: r1(l.qtd), unidade: 'g', alphaAcid: l.ref.alfa || 0, ibuCalc: 0, produtorBB: _fabBB, safra: l.ref.safra || '' });
+                window.adicoesLupuloProducao.push({ codigo: base.codigo, descricao: base.descricao, etapa: l.ref.etapa, tempo: (l.ref.etapa === 'Dry Hop' ? 0 : (l.ref.min || 0)), momento: (l.ref.etapa === 'Dry Hop' ? 'durante' : ''), quantidade: r1(l.qtd), unidade: 'g', alphaAcid: l.ref.alfa || 0, ibuCalc: 0, produtorBB: _fabBB, safra: l.ref.safra || '' });
             } else if (l.grupo === 'levedura') {
                 window.inoculacoesLeveduraProducao.push({
                     codigo: base.codigo, descricao: base.descricao, produtorBB: _fabBB, data: dataProd, quantidade: r1(l.qtd),
@@ -21850,6 +21876,12 @@ window._r8FinInit = function(pagina) {
         if (r.fermentacao.length) L.push('Fermentação planejada: ' + r.fermentacao.map(function (f) { return f.nome + ' ' + f.temp + '°C/' + f.dias + ' d'; }).join('; '));
         if (r.notas) L.push('Notas da receita: ' + r.notas);
         if (r.semDose.length) L.push('Leveduras sem dose na receita (não lançadas): ' + r.semDose.join('; '));
+        var doseAlerta = [];
+        r.leveduras.forEach(function (y) {
+            var vBatch = r.volFinal || r.volPre || 0;
+            if (vBatch > 0 && y.g / vBatch > 3) doseAlerta.push(y.nome + ' ' + r1(y.g) + ' g para ' + r1(vBatch) + ' L (' + r1(y.g / vBatch) + ' g/L)');
+        });
+        if (doseAlerta.length) L.push('⚠ Confira a dose de levedura (parece alta demais; o normal é cerca de 0,5 a 2 g/L de levedura seca): ' + doseAlerta.join('; ') + '. Verifique a unidade no XML.');
         if (autoCadastrados.length) L.push(_legadoMarcado()
             ? 'Itens da receita sem cadastro — lote legado: ficam só nesta ficha, NÃO foram cadastrados nem mexem no estoque de insumos: ' + autoCadastrados.join('; ')
             : '⚠ Itens SEM cadastro — criados automaticamente no Cadastro com estoque 0 (ficarão NEGATIVOS ao gravar a ficha; complete o cadastro e reponha o estoque): ' + autoCadastrados.join('; '));
@@ -21877,6 +21909,7 @@ window._r8FinInit = function(pagina) {
             aviso.concat(
                 (autoCadastrados.length && _legadoMarcado()) ? [autoCadastrados.length + ' item(ns) sem cadastro entraram só na ficha (lote legado) — nada foi cadastrado no estoque de insumos.'] :
                 autoCadastrados.length ? [autoCadastrados.length + ' item(ns) sem estoque foram importados mesmo assim e cadastrados com saldo 0 — vão ficar NEGATIVOS ao gravar. Veja as Anotações.'] : [],
+                doseAlerta.length ? ['Dose de levedura parece alta demais — confira o XML (veja as Anotações).'] : [],
                 ignorados.length ? [ignorados.length + ' item(ns) ficaram de fora — veja as Anotações.'] : [],
                 saisSem.length ? [saisSem.length + ' sal(is) sem cadastro — veja as Anotações.'] : []
             ).forEach(function (a) { R8.toast.aviso(a); });
