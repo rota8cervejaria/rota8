@@ -26,7 +26,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-10-27-9';
+    window.R8_BUILD = '2026-10-29-1';
     // Data de hoje (AAAA-MM-DD) no horário LOCAL — toISOString() usa UTC e, depois das 21h no Brasil, devolvia amanhã.
     window._r8HojeISO = function() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); };
     (function() {
@@ -5730,15 +5730,15 @@ window._renderPastDashboard = function() {
                         backgroundColor: 'rgba(196,154,43,0.1)',
                         borderWidth: 2.5,
                         pointBackgroundColor: valores.map(function(v){
-                            return v < 10 ? '#ef4444' : v > 15 ? '#f59e0b' : '#10b981';
+                            return v < window._R8_PU.min ? '#ef4444' : v > window._R8_PU.max ? '#f59e0b' : '#10b981';
                         }),
                         pointRadius: 5,
                         tension: 0.3,
                         fill: true
                     },
                     {
-                        label: 'Mínimo (10 Up)',
-                        data: labels.map(function(){ return 10; }),
+                        label: 'Mínimo (15 Up)',
+                        data: labels.map(function(){ return window._R8_PU.min; }),
                         borderColor: '#ef4444',
                         borderDash: [5,4],
                         borderWidth: 1.5,
@@ -5756,7 +5756,7 @@ window._renderPastDashboard = function() {
                         callbacks: {
                             label: function(ctx) {
                                 var v = ctx.parsed.y;
-                                var status = v < 10 ? '❌ Insuficiente' : v > 15 ? '⚠️ Excesso' : '✅ Adequado';
+                                var status = v < window._R8_PU.min ? '❌ Insuficiente' : v > window._R8_PU.max ? '⚠️ Excesso' : '✅ Adequado';
                                 return 'Up: ' + v.toFixed(2) + ' (' + status + ')';
                             }
                         }
@@ -5827,7 +5827,7 @@ window._renderPastDashboard = function() {
             alertEl.innerHTML = insufLista.map(function(r) {
                 return '<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:10px;padding:10px 12px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">'
                     + '<div><div style="font-weight:700;font-size:13px;color:#991b1b">' + R8.esc(r.lote) + ' — ' + R8.esc(r.estilo) + '</div>'
-                    + '<div style="font-size:11px;color:#b91c1c">' + formatarData(r.data) + ' · ' + r.upTotal + ' Up (abaixo do mínimo 10 Up)</div></div>'
+                    + '<div style="font-size:11px;color:#b91c1c">' + formatarData(r.data) + ' · ' + r.upTotal + ' Up (abaixo do mínimo ' + window._R8_PU.min + ' Up)</div></div>'
                     + '<span style="font-size:11px;font-weight:700;color:#991b1b;background:#fecaca;padding:3px 8px;border-radius:6px">❌ ' + r.upTotal + ' Up</span>'
                     + '</div>';
             }).join('');
@@ -6208,6 +6208,9 @@ R8.crud = {
 
 window._pastL = []; // leituras
 
+// Faixa de PU (Unidades de Pasteurização): abaixo de 15 = insuficiente; 15 a 25 = adequado;
+// acima de 25 = excesso (risco de alteração sensorial). Um único lugar para todas as telas/PDF.
+window._R8_PU = { min: 15, max: 25 };
 function _upCalc(t, tp){ return parseFloat((tp * Math.pow(1.393, t - 60)).toFixed(4)); }
 
 function _pastRecalc(){
@@ -6375,22 +6378,22 @@ function pastRenderResultado(){
     box.style.display='block';
     var upTotal=L[L.length-1].upAcum;
     var tTotal=L[L.length-1].tAcum;
-    var upAlvo=10;
+    var upAlvo=window._R8_PU.min;
     document.getElementById('pastResUp').textContent=upTotal.toFixed(2);
     document.getElementById('pastResTempo').textContent=tTotal+' min';
     document.getElementById('pastResN').textContent=L.length;
     document.getElementById('pastBarLabel').textContent=upTotal.toFixed(2)+' / '+upAlvo+' Up';
-    document.getElementById('pastBarra').style.width=Math.min((upTotal/15)*100,100)+'%';
+    document.getElementById('pastBarra').style.width=Math.min((upTotal/window._R8_PU.max)*100,100)+'%';
     var v=document.getElementById('pastVeredicto');
     if(upTotal<upAlvo){
         v.style.background='#fee2e2';v.style.color='#991b1b';
         v.innerHTML='❌ INSUFICIENTE — '+upTotal.toFixed(2)+' Up (mínimo: '+upAlvo+' Up)';
-    } else if(upTotal>15){
+    } else if(upTotal>window._R8_PU.max){
         v.style.background='#fef3c7';v.style.color='#92400e';
-        v.innerHTML='⚠ EXCESSO — '+upTotal.toFixed(2)+' Up (risco de alteração sensorial)';
+        v.innerHTML='⚠ EXCESSO — '+upTotal.toFixed(2)+' Up (acima de '+window._R8_PU.max+' Up — risco de alteração sensorial)';
     } else {
         v.style.background='#d1fae5';v.style.color='#065f46';
-        v.innerHTML='✅ ADEQUADO — '+upTotal.toFixed(2)+' Up (faixa ideal: 10–15 Up)';
+        v.innerHTML='✅ ADEQUADO — '+upTotal.toFixed(2)+' Up (faixa ideal: '+window._R8_PU.min+'–'+window._R8_PU.max+' Up)';
     }
 }
 
@@ -6404,7 +6407,7 @@ window.pastSalvar = function(){
     var L=window._pastL;
     if(!L.length){R8.toast.aviso('Adicione ao menos uma leitura.');return;}
     var upTotal=L[L.length-1].upAcum;
-    var status=upTotal<10?'Insuficiente':upTotal>15?'Excesso':'Adequado';
+    var status=upTotal<window._R8_PU.min?'Insuficiente':upTotal>window._R8_PU.max?'Excesso':'Adequado';
     var reg={
         id:Date.now(),
         lote:document.getElementById('pastLote').value||'—',
@@ -6609,7 +6612,7 @@ function _gerarPDFPastLayout(r){
     }
     y+=4;
 
-    // "O Índice de Up desejável: Acima de 10 Up"
+    // "O Índice de Up desejável: de 15 a 25 Up"
     doc.setFont('helvetica','normal');doc.setFontSize(9);
     doc.text('O Índice de ',mL,y);
     var x1=mL+doc.getTextWidth('O Índice de ');
@@ -6619,9 +6622,9 @@ function _gerarPDFPastLayout(r){
     doc.setLineWidth(0.4);doc.line(x1,y+0.8,x1+twUp,y+0.8);
     var x2=x1+twUp;
     doc.setFont('helvetica','normal');
-    doc.text(' desejável: Acima de 10 Up',x2,y);
+    doc.text(' desejável: de '+window._R8_PU.min+' a '+window._R8_PU.max+' Up',x2,y);
     // sublinhado no último "Up"
-    var x3=x2+doc.getTextWidth(' desejável: Acima de 10 ');
+    var x3=x2+doc.getTextWidth(' desejável: de '+window._R8_PU.min+' a '+window._R8_PU.max+' ');
     doc.setFont('helvetica','normal');
     doc.line(x3,y+0.8,x3+doc.getTextWidth('Up'),y+0.8);
     y+=10;
@@ -18676,7 +18679,7 @@ if(document.readyState === 'loading'){
             </div>
             <div style="display:flex;gap:16px;justify-content:center;margin-top:8px;flex-wrap:wrap">
                 <span style="font-size:10px;color:#555;display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:12px;height:3px;background:#c49a2b;border-radius:2px"></span>Up Total</span>
-                <span style="font-size:10px;color:#555;display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:12px;height:3px;background:#ef4444;border-style:dashed;border-top:2px dashed #ef4444;border-bottom:none"></span>Mínimo (10 Up)</span>
+                <span style="font-size:10px;color:#555;display:flex;align-items:center;gap:4px"><span style="display:inline-block;width:12px;height:3px;background:#ef4444;border-style:dashed;border-top:2px dashed #ef4444;border-bottom:none"></span>Mínimo (15 Up)</span>
             </div>
         </div>
 
@@ -18748,7 +18751,7 @@ if(document.readyState === 'loading'){
                 <span><b>Tp</b> = Tempo de Pasteurização</span>
                 <span><b>Up</b> = 1 Unidade a 60°C/min</span>
                 <span><b>Up = Tp × 1,393<sup>(T−60)</sup></b></span>
-                <span>Índice desejável: <b>≥ 10 Up</b></span>
+                <span>Índice desejável: <b>15 a 25 Up</b></span>
             </div>
             <div class="past-grid-lancamento">
                 <div class="past-campo">
@@ -18804,15 +18807,15 @@ if(document.readyState === 'loading'){
                 <div style="margin:12px 0">
                     <div style="display:flex;justify-content:space-between;margin-bottom:4px">
                         <span style="color:#e5d5b0;font-size:11px;font-weight:600">Progresso de Up</span>
-                        <span id="pastBarLabel" style="color:#c49a2b;font-size:12px;font-weight:700">0 / 10 Up</span>
+                        <span id="pastBarLabel" style="color:#c49a2b;font-size:12px;font-weight:700">0 / 15 Up</span>
                     </div>
                     <div style="background:#1a0a00;border-radius:20px;height:22px;overflow:hidden;position:relative">
                         <div id="pastBarra" style="height:100%;width:0%;background:linear-gradient(90deg,#c49a2b,#f0c040);border-radius:20px;transition:width 0.5s"></div>
                     </div>
                     <div style="display:flex;justify-content:space-between;margin-top:3px">
                         <span style="color:#666;font-size:9px">0 Up</span>
-                        <span style="color:#c49a2b;font-size:9px;font-weight:600">▲ Mínimo: 10 Up</span>
-                        <span style="color:#666;font-size:9px">15 Up</span>
+                        <span style="color:#c49a2b;font-size:9px;font-weight:600">▲ Mínimo: 15 Up</span>
+                        <span style="color:#666;font-size:9px">25 Up</span>
                     </div>
                 </div>
                 <div id="pastVeredicto" style="padding:14px;border-radius:12px;text-align:center;font-weight:800;font-size:15px;letter-spacing:0.3px"></div>
