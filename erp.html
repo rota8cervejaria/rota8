@@ -26,7 +26,9 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-10-27-3';
+    window.R8_BUILD = '2026-10-27-9';
+    // Data de hoje (AAAA-MM-DD) no horário LOCAL — toISOString() usa UTC e, depois das 21h no Brasil, devolvia amanhã.
+    window._r8HojeISO = function() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); };
     (function() {
         var buildVisto = null;
         try { buildVisto = localStorage.getItem('r8_build_visto'); } catch(e){}
@@ -4801,6 +4803,14 @@ window._r8ConferirEstoque = function() {
         .map(function(i){ return i.codigo + ' — ' + (i.descricao || ''); });
     add('Insumos ligados a compra inexistente', orfaos, 'A compra foi excluída em outro lugar; o vínculo ficou solto.');
 
+    // 8) Envase antes de a fermentação terminar (todas as fichas, exceto lotes legados)
+    var envAl = [];
+    (dadosERP.fichasTecnicas || []).forEach(function(f) {
+        var m = window._r8AlertasEnvase({ legado: f.legado, envases: f.envases, fermentacao: f.fermentacao, fgPlan: f.fgPlan, dataProducao: f.dataProducao });
+        m.forEach(function(t) { envAl.push('Lote ' + f.lote + ': ' + t); });
+    });
+    add('Envase antes da fermentação terminar', envAl, 'Confira as datas do envase e as medições de fermentação do lote.');
+
     var total = secoes.reduce(function(a, x){ return a + x.itens.length; }, 0);
     var html = '<div style="font-weight:800;font-size:17px;color:#2c1810;margin-bottom:4px">🔎 Conferência de Estoque</div>'
         + '<div style="font-size:12px;color:#7a6a5a;margin-bottom:12px">' + (total ? total + ' ponto(s) para revisar.' : 'Tudo certo: nenhuma inconsistência encontrada.') + '</div>'
@@ -4959,7 +4969,7 @@ window.confirmarBaixaProdutoAcabado = function() {
         if (b && b.status === 'Em Uso') {
             b.status = 'Aguardando Sanitização';
             if (!dadosERP.recebimentosBarris) dadosERP.recebimentosBarris = [];
-            dadosERP.recebimentosBarris.push({ codigo: b.codigo, lote: b.loteAtual || lote, data: new Date().toISOString().slice(0,10), motivo: 'Descarte total' });
+            dadosERP.recebimentosBarris.push({ codigo: b.codigo, lote: b.loteAtual || lote, data: window._r8HojeISO(), motivo: 'Descarte total' });
             avisoBarril = ' Barril ' + b.codigo + ' foi para Aguardando Sanitização.';
         }
     }
@@ -6620,7 +6630,7 @@ function _gerarPDFPastLayout(r){
     var cor=r.status==='Adequado'?[6,95,70]:r.status==='Excesso'?[146,64,14]:[153,27,27];
     doc.setFillColor(cor[0],cor[1],cor[2]);doc.rect(mL,y,cW,8,'F');
     doc.setTextColor(255,255,255);doc.setFont('helvetica','bold');doc.setFontSize(9);
-    var stTxt=(r.status==='Adequado'?'✓ APROVADO':'✗ REPROVADO')+
+    var stTxt=(r.status==='Adequado'?'APROVADO':'REPROVADO')+
         '  —  Up Total: '+r.upTotal+
         '  |  Tempo Total: '+r.tempoTotal+' min';
     doc.text(stTxt,W/2,y+5,{align:'center'});
@@ -8182,7 +8192,7 @@ window._r8ConfirmarImportacaoNFe = function() {
             });
             if (!jaExiste) {
                 var dtNota = String(notaImp.dataEmissao || '').slice(0, 10);
-                if (!/^\d{4}-\d{2}-\d{2}$/.test(dtNota)) dtNota = new Date().toISOString().split('T')[0];
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(dtNota)) dtNota = window._r8HojeISO();
                 var compraNova = {
                     id: R8.novoId(), grupoId: grupoCompraId, secao: 'Fábrica', data: dtNota,
                     fornecedor: fornecedor, numeroNF: nfNum, cnpjFornecedor: nfCnpj,
@@ -8691,7 +8701,7 @@ function _renderListaMostura(){
             desvioHtml = ' <span style="font-size:10px;color:'+cor+';font-weight:700">[Δ'+(dv>=0?'+':'')+dv+'°C]</span>';
         }
         var tipoLabel = e.tipo ? '<span style="font-size:10px;background:#e0f2fe;color:#0369a1;padding:1px 5px;border-radius:4px;margin-right:4px">'+e.tipo+'</span>' : '';
-        return tipoLabel+(e.nome||'')+(e.tempAlvo?' → Alvo:'+e.tempAlvo+'°C':'')+' Real:'+e.temperatura+'°C / '+e.tempo+'min'+desvioHtml;
+        return tipoLabel+(e.nome||'')+(e.tempAlvo?' — Alvo: '+e.tempAlvo+'°C':'')+(e.temperatura?' — Real: '+e.temperatura+'°C':'')+(e.tempo?' — '+e.tempo+' min':'')+desvioHtml;
     });
 }
 function _renderListaLupulos(){
@@ -8743,13 +8753,10 @@ window.salvarMosturaERP=function(){
 };
 
 // Dry Hop não tem tempo em minutos: é feito DURANTE a fermentação (~80%, para a
-// biotransformação) ou APÓS a fermentação. Fichas antigas (só com minutos) caem
-// para dias como alternativa de exibição.
+// biotransformação) ou APÓS a fermentação.
 window._r8RotuloMomentoDryHop = function(l, curto) {
-    if (l && l.momento === 'durante') return curto ? 'Durante ferm. (~80%)' : 'durante a fermentação (~80%)';
     if (l && l.momento === 'apos') return curto ? 'Pós-fermentação' : 'após a fermentação';
-    if (l && l.tempo) { var d = Math.round(l.tempo / 1440 * 10) / 10; return d + ' d'; }
-    return '';
+    return curto ? 'Durante ferm. (~80%)' : 'durante a fermentação (~80%)'; // padrão (inclui fichas antigas sem o campo)
 };
 window._r8AtualizarCamposLupulo = function() {
     var dry = document.getElementById('lupuloEtapaProducao')?.value === 'Dry Hop';
@@ -8850,6 +8857,38 @@ window.salvarPurgaERP=function(){
     _renderListaPurga();fecharFormERP('formPurgaProducao');
 };
 
+// Alertas de envase (mestre cervejeiro): envase antes da fermentação terminar.
+window._r8AlertasEnvase = function(d) {
+    var msgs = [];
+    if (!d || d.legado) return msgs;
+    var fmt = function(x) { x = String(x || ''); return x.slice(8, 10) + '/' + x.slice(5, 7); };
+    var pd = function(x) { var v = parseFloat(String(x == null ? '' : x).replace(',', '.')); if (!isFinite(v) || v <= 0) return null; if (v > 10) v /= 1000; return (v >= 0.98 && v <= 1.2) ? v : null; };
+    var envs = (d.envases || []).filter(function(e) { return e && e.data; });
+    if (!envs.length) return msgs;
+    var meds = (d.fermentacao || []).filter(function(m) { return m && m.dataHora && pd(m.densidade); })
+        .sort(function(a, b) { return String(a.dataHora).localeCompare(String(b.dataHora)); });
+    if (!meds.length) {
+        msgs.push('Envase lançado sem nenhuma medição de fermentação registrada.');
+    } else {
+        var ult = meds[meds.length - 1], ultData = String(ult.dataHora).slice(0, 10);
+        var antes = envs.filter(function(e) { return e.data < ultData; });
+        if (antes.length) msgs.push(antes.length + ' envase(s) com data anterior à última medição de fermentação (' + fmt(ultData) + '), p.ex. ' + (antes[0].embalagemCodigo || antes[0].tipo || 'envase') + ' em ' + fmt(antes[0].data) + '.');
+        var du = pd(ult.densidade), fg = pd(d.fgPlan);
+        if (du && fg && du - fg > 0.004) msgs.push('Fermentação possivelmente incompleta: última densidade ' + du.toFixed(3) + ' ainda acima da FG planejada ' + fg.toFixed(3) + '.');
+    }
+    if (d.dataProducao) {
+        var antesProd = envs.filter(function(e) { return e.data < d.dataProducao; });
+        if (antesProd.length) msgs.push(antesProd.length + ' envase(s) anterior(es) à data de produção (' + fmt(d.dataProducao) + ').');
+    }
+    return msgs;
+};
+window._r8AlertasEnvaseDoForm = function() {
+    return window._r8AlertasEnvase({
+        legado: !!document.getElementById('producaoLegado')?.checked,
+        envases: window.envasesAdicionadosProducao, fermentacao: window.medicoesFermentacaoProducao,
+        fgPlan: document.getElementById('producaoFGPlan')?.value, dataProducao: document.getElementById('producaoData')?.value
+    });
+};
 window.salvarEnvaseProducaoERP=function(){
     var data=document.getElementById('producaoEnvaseData')?.value;
     var tipo=document.getElementById('producaoEnvaseTipo')?.value;
@@ -8875,6 +8914,7 @@ window.salvarEnvaseProducaoERP=function(){
     }
     if(embCodigo) window._bloquearBarrilPorCodigo(embCodigo,loteAtual); // bloqueia o barril usado neste envase
     _renderListaEnvase();
+    try{ var _al=window._r8AlertasEnvaseDoForm(); if(_al.length) R8.toast.aviso('⚠ Atenção ao envase: '+_al.join(' '),9000); }catch(e){}
     fecharFormERP('formEnvaseProducao');
     document.getElementById('producaoEnvaseData').value='';
     document.getElementById('producaoEnvaseEmbalagemSelect').selectedIndex=0;
@@ -9118,6 +9158,7 @@ function salvarFichaTecnicaERP() {
     };
 
     if (ficha.legado) window._r8PurgarRastroLegado([ficha.lote], ficha); // lote legado: nenhum rastro em Insumos/Sais
+    try { var _alEnv = window._r8AlertasEnvase(ficha); if (_alEnv.length) R8.toast.aviso('⚠ Conferir envase: ' + _alEnv.join(' '), 9000); } catch (e) {}
 
     // ── EDIÇÃO: baixa/estorno de insumos pela DIFERENÇA em relação ao
     // que já havia sido baixado antes (evita baixar de novo o que já foi
@@ -10679,7 +10720,7 @@ window._confirmarRecebimentoBarril = function(codigo) {
         onConfirm: function() {
             if (!dadosERP.recebimentosBarris) dadosERP.recebimentosBarris = [];
             dadosERP.recebimentosBarris.push({
-                codigo: codigo, lote: b.loteAtual || '', data: new Date().toISOString().slice(0,10)
+                codigo: codigo, lote: b.loteAtual || '', data: window._r8HojeISO()
             }); // histórico/auditoria — não é mais usado para decidir o status
             // Transição direta, na hora do clique — sem comparar datas de
             // eventos antigos, que é o que causava tanto o recebimento não
@@ -13415,7 +13456,7 @@ window.gerarPDFMovimentacoesEstoque=function(){
         return[
             formatarData(m.data?m.data.split(' ')[0]:''),
             m.data?m.data.split(' ')[1]||'':'',
-            m.tipo==='saida'?'↓ SAÍDA':'↑ ENTRADA',
+            m.tipo==='saida'?'(-) SAÍDA':'(+) ENTRADA',
             m.produto||m.descricao||'-',
             m.lote||'-',
             (m.quantidade||0).toFixed(2)+(m.unidade?' '+m.unidade:'L'),
@@ -13796,6 +13837,14 @@ window._nomeCervejaFicha=function(f){
 function gerarPDFFichaLayout(f,filename){
     const{jsPDF}=window.jspdf;
     const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+    // A fonte padrão do PDF não tem alguns símbolos (₂, →, ≈ …); com eles o jsPDF
+    // desenha a linha inteira com as letras espaçadas. Troca por equivalentes simples.
+    (function(){
+        var _txt0=doc.text.bind(doc);
+        var _mapa={'₀':'0','₁':'1','₂':'2','₃':'3','₄':'4','₅':'5','₆':'6','₇':'7','₈':'8','₉':'9','→':'>','←':'<','≈':'~','≥':'>=','≤':'<=','✓':'OK','✔':'OK','★':'*','⚠':'!','α':'alfa','β':'beta','γ':'gama','μ':'u'};
+        var _san=function(t){ return (typeof t==='string') ? t.replace(/[₀-₉→←≈≥≤✓✔★⚠αβγμ]/g,function(c){return _mapa[c];}) : t; };
+        doc.text=function(t,x,y,o){ return _txt0(Array.isArray(t)?t.map(_san):_san(t),x,y,o); };
+    })();
     const W=210,H=297,mL=8,mR=8,cW=194;
     const hoje=obterData();
     const P=[255,255,255],D=[196,154,43],B=[255,255,255],TXT=[44,24,16];
@@ -14213,6 +14262,10 @@ function gerarPDFFichaLayout(f,filename){
     if(!ins.length){
         bloco(C1X,yy,cW,LH,245,252,245,'Nenhum insumo registrado.',false,160,160,160,8,'center');yy+=LH;
     }else{
+        // % sobre o total de fermentáveis (malte/adjunto) por peso; lúpulo/levedura ficam sem %
+        const _kgDe=function(it){var q=parseFloat(it.quantidade);if(!isFinite(q))return 0;return (it.unidade||'')==='g'?q/1000:q;};
+        const _ehFerm=function(it){var t=_enriquece(it).tipo;return t==='Malte'||t==='Adjunto';};
+        const _totFerm=ins.reduce(function(a,it){return a+(_ehFerm(it)?_kgDe(it):0);},0);
         ins.forEach((it,i)=>{
             // Nova página se necessário
             if(yy+LH>PAGE_BOTTOM){
@@ -14228,7 +14281,7 @@ function gerarPDFFichaLayout(f,filename){
                 e.codigo.substring(0,8),e.lote.substring(0,9),e.tipo.substring(0,10),
                 e.descricao.substring(0,20),e.produtor.substring(0,13),
                 e.fornecedor.substring(0,13),e.quantidade+(e.unidade?' '+e.unidade:''),
-                (it.percentual||'—')
+                (it.percentual||((_totFerm>0&&_ehFerm(it))?(_kgDe(it)/_totFerm*100).toFixed(1)+'%':'—'))
             ];
             let hx2=C1X;
             iCols.forEach(([w],ci)=>{
@@ -14244,21 +14297,32 @@ function gerarPDFFichaLayout(f,filename){
     let yMostStart=yBot;
     cardY=yBot;
     yy=secTit('Mosturação',yBot,[70,30,120],C1X,C1W);
-    const most=f.mostura||[];
+    // Ordem do processo: proteólise → sacarificação → mash-out (dentro da mesma fase mantém a ordem lançada)
+    const _faseMost=function(m){
+        var nm=String((m.nome||'')+' '+(m.tipo||'')).toLowerCase();
+        if(/mash[\s-]*out/.test(nm))return 3;
+        if(/proteol|protease|prote[oó]lise/.test(nm))return 1;
+        var t=parseFloat(m.tempAlvo||m.temperatura);
+        if(isFinite(t)){return t<=56?1:(t<=73?2:3);}
+        return 2;
+    };
+    const most=(f.mostura||[]).map(function(m,i){return{m:m,i:i,r:_faseMost(m)};})
+        .sort(function(a,b){return a.r-b.r||a.i-b.i;}).map(function(x){return x.m;});
     if(!most.length){
         bloco(C1X,yy,C1W,LH,245,240,255,'Nenhuma etapa.',false,160,160,160,8,'center');yy+=LH;
     }else{
         bloco(C1X,yy,C1W,LHH,55,25,95,null);
         let mx=C1X;
-        [['Etapa',C1W*0.46],['Temp.',C1W*0.27],['Tempo',C1W*0.27]].forEach(([t,w])=>{
+        [['Etapa',C1W*0.34],['Alvo',C1W*0.22],['Real',C1W*0.22],['Tempo',C1W*0.22]].forEach(([t,w])=>{
             doc.setTextColor(220,210,255);doc.setFontSize(7);doc.setFont('helvetica','bold');
             doc.text(t,mx+w/2,hdrY(yy,LHH),{align:'center'});mx+=w;
         });yy+=LHH;
         most.forEach((m,i)=>{
             let[r,g,b]=i%2?[242,238,252]:[250,248,255];
-            bloco(C1X,yy,C1W*0.46,LH,r,g,b,(m.nome||'—').substring(0,16),false,20,20,30,7,'center');
-            bloco(C1X+C1W*0.46,yy,C1W*0.27,LH,r,g,b,(m.temperatura||'—')+'°C',true,80,30,130,8,'center');
-            bloco(C1X+C1W*0.73,yy,C1W*0.27,LH,r,g,b,(m.tempo||'—')+' min',true,80,30,130,8,'center');
+            bloco(C1X,yy,C1W*0.34,LH,r,g,b,(m.nome||m.tipo||'—').substring(0,18),false,20,20,30,7,'center');
+            bloco(C1X+C1W*0.34,yy,C1W*0.22,LH,r,g,b,m.tempAlvo?m.tempAlvo+'°C':'—',false,90,70,130,7.5,'center');
+            bloco(C1X+C1W*0.56,yy,C1W*0.22,LH,r,g,b,m.temperatura?m.temperatura+'°C':'—',true,80,30,130,8,'center');
+            bloco(C1X+C1W*0.78,yy,C1W*0.22,LH,r,g,b,m.tempo?m.tempo+' min':'—',true,80,30,130,8,'center');
             yy+=LH;
         });
     }
@@ -14288,7 +14352,11 @@ function gerarPDFFichaLayout(f,filename){
         var ptsC=pts.filter(function(p){return isFinite(p.c);});
         var temT=ptsC.length>=2;
         var px0=C2X+11,px1=C2X+C2W-(temT?10:4),py0=ya+7,py1=ya+anotH-6.5;
-        var dMin=Math.min.apply(null,pts.map(function(p){return p.d;})),dMax=Math.max.apply(null,pts.map(function(p){return p.d;}));
+        var _pd=function(x){var v=parseFloat(String(x==null?'':x).replace(',','.'));if(!isFinite(v)||v<=0)return null;if(v>10)v=v/1000;return(v>=0.98&&v<=1.2)?v:null;};
+        var refOG=_pd(f.ogPlan),refFG=_pd(f.fgPlan);
+        var _vals=pts.map(function(p){return p.d;});
+        if(refOG)_vals.push(refOG);if(refFG)_vals.push(refFG);
+        var dMin=Math.min.apply(null,_vals),dMax=Math.max.apply(null,_vals);
         if(dMax-dMin<0.002){dMin-=0.002;dMax+=0.002;}
         var dPad=(dMax-dMin)*0.08;dMin-=dPad;dMax+=dPad;
         var cMin=0,cMax=1;
@@ -14310,6 +14378,15 @@ function gerarPDFFichaLayout(f,filename){
             if(temT){doc.setTextColor(40,100,200);doc.text((cMin+(cMax-cMin)*gi/3).toFixed((cMax-cMin)<6?1:0),px1+1,gy+0.6);}
         }
         doc.setDrawColor(190,195,205);doc.line(px0,py0,px0,py1);doc.line(px0,py1,px1,py1);
+        // linhas de referência: OG e FG planejadas (cinza tracejado)
+        var _refs=[];if(refOG)_refs.push(['OG plan. '+refOG.toFixed(3),refOG,-0.8]);if(refFG)_refs.push(['FG plan. '+refFG.toFixed(3),refFG,2.3]);
+        if(_refs.length){
+            doc.setDrawColor(130,135,150);doc.setLineWidth(0.25);doc.setLineDashPattern([0.8,0.8],0);
+            _refs.forEach(function(rf){var yr=fYd(rf[1]);doc.line(px0,yr,px1,yr);});
+            doc.setLineDashPattern([],0);
+            doc.setFontSize(5);doc.setFont('helvetica','bold');doc.setTextColor(100,105,120);
+            _refs.forEach(function(rf){doc.text(rf[0],px1-0.8,fYd(rf[1])+rf[2],{align:'right'});});
+        }
         // rótulos do eixo X (datas ou nº da medição)
         var lblX=function(t){var d=new Date(t);return ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2);};
         doc.setTextColor(90,95,105);
@@ -14339,6 +14416,10 @@ function gerarPDFFichaLayout(f,filename){
         if(temT){
             doc.setDrawColor(...AZ);doc.setLineWidth(0.35);doc.setLineDashPattern([1.2,0.9],0);doc.line(C2X+30,ya+3.2,C2X+34,ya+3.2);doc.setLineDashPattern([],0);
             doc.setTextColor(40,100,200);doc.text('Temp (°C)',C2X+35,ya+3.9);
+        }
+        if(_refs.length){
+            doc.setDrawColor(130,135,150);doc.setLineWidth(0.25);doc.setLineDashPattern([0.8,0.8],0);doc.line(C2X+56,ya+3.2,C2X+60,ya+3.2);doc.setLineDashPattern([],0);
+            doc.setTextColor(100,105,120);doc.text('OG/FG planejadas',C2X+61,ya+3.9);
         }
         doc.setLineWidth(0.0001);doc.setDrawColor(255,255,255);
     })();
@@ -15641,7 +15722,7 @@ function _renderizarConteudoLote(container, f) {
     var mostura = f.mostura || f.etapasMostura || [];
     var mosturaHTML = mostura.length
         ? '<table class="pub-table"><thead><tr><th>Etapa</th><th>Temperatura</th><th>Tempo</th></tr></thead><tbody>'
-            + mostura.map(function(m){ return '<tr><td>'+m.nome+'</td><td>'+m.temperatura+'°C</td><td>'+m.tempo+' min</td></tr>'; }).join('')
+            + mostura.map(function(m){ var _t = m.temperatura || m.tempAlvo; return '<tr><td>'+(m.nome||m.tipo||'—')+'</td><td>'+(_t ? _t+'°C' : '—')+'</td><td>'+(m.tempo ? m.tempo+' min' : '—')+'</td></tr>'; }).join('')
             + '</tbody></table>'
         : '<p style="color:#94a3b8;font-style:italic;text-align:center">Não registrada</p>';
 
@@ -16347,7 +16428,7 @@ window.gerarPDFRecall = function() {
     doc.text('1. Isolar imediatamente os lotes listados no estoque (câmara fria / PDV).', M+2, Y); Y+=5;
     doc.text('2. Notificar os destinos de venda indicados acima.', M+2, Y); Y+=5;
     doc.text('3. Registrar ocorrência no Livro de Não Conformidades e comunicar à ANVISA/MAPA conforme RDC 723.', M+2, Y); Y+=5;
-    doc.save('Recall_R8_'+dados.busca.replace(/\s+/g,'_')+'_'+new Date().toISOString().slice(0,10)+'.pdf');
+    doc.save('Recall_R8_'+dados.busca.replace(/\s+/g,'_')+'_'+window._r8HojeISO()+'.pdf');
 };
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -17082,7 +17163,7 @@ window.renderDashboard = function() {
     var notaMedia = analises.length ? analises.reduce(function(a,s){return a+s.total;},0)/analises.length : null;
     var extra = '<div style="font-size:10px;font-weight:700;color:#6b5b4e;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">📊 Qualidade & Desempenho</div>';
     extra += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">';
-    extra += _dashKpi('Efic. Média',eficMedia?eficMedia.toFixed(1)+'%':'—', eficMedia?(eficMedia>=80?'#10b981':eficMedia>=70?'#f59e0b':'#ef4444'):'#94a3b8','fa-percentage', eficMedia?'Extração':'Sem dados');
+    extra += _dashKpi('OG atingida',eficMedia?eficMedia.toFixed(1)+'%':'—', eficMedia?(eficMedia>=80?'#10b981':eficMedia>=70?'#f59e0b':'#ef4444'):'#94a3b8','fa-percentage', eficMedia?'OG real ÷ OG planejada':'Sem dados');
     extra += _dashKpi('Nota Sensorial',notaMedia?notaMedia.toFixed(1)+'/60':'—', notaMedia?(notaMedia>=48?'#10b981':notaMedia>=36?'#c49a2b':'#ef4444'):'#94a3b8','fa-star', notaMedia?'Degustações':'Sem análises');
     extra += '</div>';
     el.innerHTML += extra;
@@ -19006,7 +19087,7 @@ if(document.readyState === 'loading'){
       <button onclick="dashMesSeg()">&#8250;</button>
     </div>
     <div class="saldo-card pos" id="dash-saldo-card">
-      <div><div class="sc-l">Saldo do período</div><div class="sc-v" id="dash-saldo-v">—</div></div>
+      <div><div class="sc-l">Saldo do período <span style="font-weight:500;opacity:.8">(após despesas fixas)</span></div><div class="sc-v" id="dash-saldo-v">—</div></div>
       <div style="text-align:right" id="dash-comp"></div>
     </div>
 
@@ -19674,7 +19755,7 @@ const setOrcamentos=d=>DB.set('r8_orc',d);
 
 // ════ UTILS ════
 const MESES=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
-const todayISO=()=>new Date().toISOString().split('T')[0];
+const todayISO=()=>window._r8HojeISO();
 const mesAtual=()=>{const n=new Date();return{ano:n.getFullYear(),mes:n.getMonth()};};
 const mesLabel=(a,m)=>MESES[m]+' / '+a;
 const mesLabelCurto=(a,m)=>MESES[m].slice(0,3)+'/'+String(a).slice(2);
@@ -19854,7 +19935,7 @@ function renderAgenda(){
     const dd=parts[2]+'/'+parts[1];
     const stLabel=a.statusPag==='pago'?'Pago':(isAt?'Atrasado':'Pendente');
     const stCls=a.statusPag==='pago'?'pago':(isAt?'atrs':'pend');
-    return '<div class="ag-item"><div class="ag-dt '+cls+'"><span>'+(isHj?'Hoje':(isAt?'Atras.':'Vence'))+'</span><div class="dd">'+dd+'</div></div><div style="flex:1;min-width:0"><div class="ag-nm">'+a.nome+'</div><div class="ag-vl">'+fmtBRL(a.valor)+'</div><span class="ag-st '+stCls+'">'+stLabel+'</span></div></div>';
+    return '<div class="ag-item"><div class="ag-dt '+cls+'"><span>'+(isHj?'Hoje':(isAt?'Atras.':'Vence'))+'</span><div class="dd">'+dd+'</div></div><div style="flex:1;min-width:0"><div class="ag-nm">'+R8.esc(a.nome)+'</div><div class="ag-vl">'+fmtBRL(a.valor)+'</div><span class="ag-st '+stCls+'">'+stLabel+'</span></div></div>';
   }).join('');
 }
 
@@ -20986,8 +21067,8 @@ function renderContas(){
     return '<div class="lanc-item">'+
       '<div class="lanc-dot '+(l.status==='pago'?'pago':l.tipo)+'"></div>'+
       '<div class="lanc-info">'+
-        '<div class="lanc-desc">'+l.nome+'</div>'+
-        '<div class="lanc-sub">'+dataLabel(l.data)+(l.sub?' · '+l.sub:'')+'</div>'+
+        '<div class="lanc-desc">'+R8.esc(l.nome)+'</div>'+
+        '<div class="lanc-sub">'+dataLabel(l.data)+(l.sub?' · '+R8.esc(l.sub):'')+'</div>'+
       '</div>'+
       '<div class="lanc-right">'+
         '<div class="lanc-val '+l.tipo+'">'+fmtBRL(l.valor)+'</div>'+
@@ -21495,9 +21576,22 @@ window._r8FinInit = function(pagina) {
             r.lupulos.push({ fab: tx(h, 'R8_FABRICANTE'), safra: tx(h, 'R8_SAFRA'), nome: tx(h, 'NAME'), g: g, alfa: num(tx(h, 'ALPHA')), etapa: etapa, min: num(tx(h, 'TIME')) });
         });
         kids(kid(rec, 'YEASTS'), 'YEAST').forEach(function (y) {
-            var q = num(tx(y, 'AMOUNT')) * 1000; // kg → g (ou L → mL ≈ g)
+            var aXml = num(tx(y, 'AMOUNT'));
+            var q = aXml * 1000; // BeerXML padrão: kg → g (ou L → mL ≈ g)
+            var vLote = r.volFinal || r.volPre || 0, nota = '';
+            // Dose impossível (> 3 g/L, ex.: 11,4 kg para 260 L) = o XML não veio em kg.
+            // Tenta gramas e, depois, sachês de 11,5 g (faixa normal: 0,1 a 3 g/L).
+            if (aXml > 0 && vLote > 0 && q / vLote > 3) {
+                if (aXml / vLote >= 0.1 && aXml / vLote <= 3) {
+                    q = aXml;
+                    nota = 'Levedura "' + tx(y, 'NAME') + '": o XML trouxe ' + String(aXml).replace('.', ',') + ' (impossível em kg) — interpretado como ' + String(aXml).replace('.', ',') + ' g (' + (aXml / vLote).toFixed(2).replace('.', ',') + ' g/L). Confira a dose.';
+                } else if (aXml * 11.5 / vLote >= 0.1 && aXml * 11.5 / vLote <= 3) {
+                    q = aXml * 11.5;
+                    nota = 'Levedura "' + tx(y, 'NAME') + '": o XML trouxe ' + String(aXml).replace('.', ',') + ' (impossível em kg) — interpretado como ' + String(aXml).replace('.', ',') + ' sachê(s) de 11,5 g = ' + Math.round(q) + ' g (' + (q / vLote).toFixed(2).replace('.', ',') + ' g/L). Confira a dose.';
+                }
+            }
             var tipo = /lager/i.test(tx(y, 'TYPE')) ? 'lager' : (/wild|brett/i.test(tx(y, 'TYPE')) ? 'wild' : 'ale');
-            if (q > 0) r.leveduras.push({ fab: tx(y, 'LABORATORY'), nome: tx(y, 'NAME'), g: q, tipo: tipo, aten: num(tx(y, 'ATTENUATION')) });
+            if (q > 0) r.leveduras.push({ fab: tx(y, 'LABORATORY'), nome: tx(y, 'NAME'), g: q, tipo: tipo, aten: num(tx(y, 'ATTENUATION')), nota: nota });
             else r.semDose.push(tx(y, 'NAME'));
         });
         kids(kid(rec, 'MISCS'), 'MISC').forEach(function (m) {
@@ -21869,13 +21963,15 @@ window._r8FinInit = function(pagina) {
 
         // Anotações (processo, fermentação planejada, carbonatação, itens não importados)
         var L = [];
-        L.push('[Receita importada: ' + (r.nome || nomeArquivo) + ' — ' + nomeArquivo + ' — ' + new Date().toLocaleDateString('pt-BR') + ']');
+        var _nArq = String(nomeArquivo || '').replace(/^f_[A-Za-z0-9]{16,}_/, ''); if (_nArq.length > 45) _nArq = _nArq.slice(0, 20) + '…' + _nArq.slice(-18);
+        L.push('[Receita importada: ' + (r.nome || _nArq) + ' — ' + _nArq + ' — ' + new Date().toLocaleDateString('pt-BR') + ']');
         if (r.ebc > 0) L.push('Cor estimada: ' + Math.round(r.ebc) + ' EBC');
-        if (r.co2 > 0) L.push('Carbonatação: ' + String(r.co2).replace('.', ',') + ' vol. CO₂');
-        if (r.equipamento || r.efic) L.push('Equipamento: ' + (r.equipamento || '—') + (r.efic ? ' | Eficiência ' + r.efic + '%' : '') + (r.tempoFervura ? ' | Fervura ' + r.tempoFervura + ' min' : ''));
+        if (r.co2 > 0) L.push('Carbonatação: ' + String(r.co2).replace('.', ',') + ' vol. CO2');
+        if (r.equipamento || r.efic) L.push([r.equipamento ? 'Equipamento: ' + r.equipamento : '', r.efic ? 'Eficiência ' + r.efic + '%' : '', r.tempoFervura ? 'Fervura ' + r.tempoFervura + ' min' : ''].filter(Boolean).join(' | '));
         if (r.fermentacao.length) L.push('Fermentação planejada: ' + r.fermentacao.map(function (f) { return f.nome + ' ' + f.temp + '°C/' + f.dias + ' d'; }).join('; '));
         if (r.notas) L.push('Notas da receita: ' + r.notas);
         if (r.semDose.length) L.push('Leveduras sem dose na receita (não lançadas): ' + r.semDose.join('; '));
+        r.leveduras.forEach(function (y) { if (y.nota) L.push('⚠ ' + y.nota); });
         var doseAlerta = [];
         r.leveduras.forEach(function (y) {
             var vBatch = r.volFinal || r.volPre || 0;
@@ -21909,6 +22005,7 @@ window._r8FinInit = function(pagina) {
             aviso.concat(
                 (autoCadastrados.length && _legadoMarcado()) ? [autoCadastrados.length + ' item(ns) sem cadastro entraram só na ficha (lote legado) — nada foi cadastrado no estoque de insumos.'] :
                 autoCadastrados.length ? [autoCadastrados.length + ' item(ns) sem estoque foram importados mesmo assim e cadastrados com saldo 0 — vão ficar NEGATIVOS ao gravar. Veja as Anotações.'] : [],
+                r.leveduras.some(function (y) { return y.nota; }) ? ['A dose de levedura do XML foi ajustada para uma unidade plausível — confira nas Anotações.'] : [],
                 doseAlerta.length ? ['Dose de levedura parece alta demais — confira o XML (veja as Anotações).'] : [],
                 ignorados.length ? [ignorados.length + ' item(ns) ficaram de fora — veja as Anotações.'] : [],
                 saisSem.length ? [saisSem.length + ' sal(is) sem cadastro — veja as Anotações.'] : []
