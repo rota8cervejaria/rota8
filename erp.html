@@ -26,7 +26,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-10-29-3';
+    window.R8_BUILD = '2026-10-29-4';
     // Data de hoje (AAAA-MM-DD) no horário LOCAL — toISOString() usa UTC e, depois das 21h no Brasil, devolvia amanhã.
     window._r8HojeISO = function() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); };
     (function() {
@@ -6961,14 +6961,13 @@ window._calcEficiencia = function() {
 // ═══════════════════════════════════════════════════════
 // ITEM 2: Auto-cálculo ABV a partir de OG e FG
 // ═══════════════════════════════════════════════════════
-// ABV: (OG−FG)×131,25 é ótima até ~1.050; em cervejas fortes subestima. Entre OG 1.050 e
-// 1.070 mistura gradualmente com a fórmula completa (Hall) e acima de 1.070 usa só ela —
-// assim as cervejas comuns não mudam (4,99 → 5,0) e as fortes ficam mais exatas.
+// ABV: UMA ÚNICA fórmula para todas as cervejas (a fórmula não depende do estilo nem da densidade).
+// Hoje: simples, (OG − FG) × 131,25 — a mesma do Brewfather. Para trocar para a fórmula completa
+// (mais exata em cervejas muito fortes), basta mudar R8_ABV_FORMULA para 'completa'.
+window.R8_ABV_FORMULA = 'simples';
 window._r8ABV = function(og, fg) {
-    var simples = (og - fg) * 131.25;
-    var completa = (76.08 * (og - fg) / (1.775 - og)) * (fg / 0.794);
-    var w = Math.min(1, Math.max(0, (og - 1.050) / 0.020));
-    return (1 - w) * simples + w * completa;
+    if (window.R8_ABV_FORMULA === 'completa') return (76.08 * (og - fg) / (1.775 - og)) * (fg / 0.794);
+    return (og - fg) * 131.25;
 };
 window._calcABV = function(modo) {
     var ogId = modo === 'plan' ? 'producaoOGPlan' : 'producaoOG';
