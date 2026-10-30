@@ -26,7 +26,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-10-29-1';
+    window.R8_BUILD = '2026-10-29-3';
     // Data de hoje (AAAA-MM-DD) no horário LOCAL — toISOString() usa UTC e, depois das 21h no Brasil, devolvia amanhã.
     window._r8HojeISO = function() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); };
     (function() {
@@ -4686,6 +4686,7 @@ function _r8SaidaProducaoInsumo(codigo) {
     var liquido = 0;
     (dadosERP.movimentacoesEstoque||[]).forEach(function(m){
         if (m.codigo !== codigo) return;
+        if (m.categoria === 'sais' || m.categoria === 'limpeza') return; // outra categoria de estoque
         // Só baixas/estornos da Produção (Ficha Técnica) ou de Descarte
         // (baixa manual por vencimento/dano) contam no saldo.
         if (!m.origem || (m.origem.indexOf('Ficha Técnica') !== 0 && m.origem.indexOf('Descarte') !== 0)) return;
@@ -4705,7 +4706,7 @@ function _r8SaldoAgrupadoInsumo(codigo) {
 // resto do sistema (Estoque, Movimentações, alertas) — sem trilha paralela.
 // ══════════════════════════════════════════════════════════════════════════
 window._mudarAbaBaixaEstoque = function(aba) {
-    ['insumo','produto'].forEach(function(a){
+    ['insumo','produto','sal','limpeza'].forEach(function(a){
         var painel = document.getElementById('tabConteudoBaixa_' + a);
         if (painel) painel.style.display = (a === aba) ? '' : 'none';
         var btn = document.getElementById('tabBtnBaixa_' + a);
@@ -4716,6 +4717,8 @@ window._mudarAbaBaixaEstoque = function(aba) {
         }
     });
     if (aba === 'insumo') _r8PopularSelectBaixaInsumo();
+    else if (aba === 'sal') _r8PopularSelectBaixaSal();
+    else if (aba === 'limpeza') _r8PopularSelectBaixaLimpeza();
     else _r8PopularSelectBaixaProduto();
 };
 
@@ -4877,6 +4880,105 @@ window.confirmarBaixaInsumo = function() {
     setTimeout(_renderizarAlertasEstoque, 200);
 };
 
+// ── Baixa manual de SAIS de correção da água (g) — mesmo padrão dos insumos ──
+function _r8PopularSelectBaixaSal() {
+    var sel = document.getElementById('baixaSalCodigo');
+    if (!sel) return;
+    var vistos = {}, opcoes = [];
+    (dadosERP.sais || []).forEach(function(x){
+        if (!x.codigo || vistos[x.codigo]) return;
+        vistos[x.codigo] = true;
+        var saldo = _r8SaldoAgrupadoSal(x.codigo);
+        if (saldo <= 0.001) return;
+        opcoes.push({codigo:x.codigo, nome:x.nome, saldo:saldo});
+    });
+    opcoes.sort(function(a,b){ return (a.nome||'').localeCompare(b.nome||''); });
+    sel.innerHTML = '<option value="">Selecione...</option>' + opcoes.map(function(o){
+        return '<option value="'+R8.esc(o.codigo)+'">'+R8.esc(o.nome||o.codigo)+' — '+o.saldo.toFixed(2)+' g</option>';
+    }).join('');
+    var info = document.getElementById('baixaSalSaldoInfo'); if (info) info.textContent = '';
+}
+window._r8AtualizarSaldoBaixaSal = function() {
+    var cod = document.getElementById('baixaSalCodigo')?.value;
+    var info = document.getElementById('baixaSalSaldoInfo');
+    if (!info) return;
+    if (!cod) { info.textContent = ''; return; }
+    var x = (dadosERP.sais||[]).find(function(y){ return y.codigo === cod; });
+    info.textContent = x ? ('Saldo atual: ' + _r8SaldoAgrupadoSal(cod).toFixed(2) + ' g') : '';
+};
+window.confirmarBaixaSal = function() {
+    var cod = document.getElementById('baixaSalCodigo')?.value;
+    var qtd = parseFloat(document.getElementById('baixaSalQtd')?.value);
+    var motivo = document.getElementById('baixaSalMotivo')?.value || 'Outro';
+    var obs = document.getElementById('baixaSalObs')?.value || '';
+    if (!cod) { R8.toast.aviso('Selecione o sal.'); return; }
+    if (!qtd || qtd <= 0) { R8.toast.aviso('Informe uma quantidade válida.'); return; }
+    var x = (dadosERP.sais||[]).find(function(y){ return y.codigo === cod; });
+    if (!x) { R8.toast.erro('Sal não encontrado.'); return; }
+    var saldoAntes = _r8SaldoAgrupadoSal(cod);
+    if (qtd > saldoAntes + 0.001) { R8.toast.erro('Quantidade maior que o saldo (' + saldoAntes.toFixed(2) + ' g).'); return; }
+    if (!dadosERP.movimentacoesEstoque) dadosERP.movimentacoesEstoque = [];
+    dadosERP.movimentacoesEstoque.push({
+        id: Date.now() + '_descsal_' + cod, data: obterDataHora(), tipo: 'saida',
+        categoria: 'sais', codigo: cod, descricao: x.nome, tipoInsumo: 'Sal (Correção Água)',
+        quantidade: qtd, unidade: 'g', origem: 'Descarte - ' + motivo, obs: obs,
+        saldoAnterior: saldoAntes, saldoAtual: parseFloat((saldoAntes - qtd).toFixed(2))
+    });
+    salvarDadosFirebase();
+    if (typeof registrarAuditoria === 'function') registrarAuditoria('Estoque', 'baixa', 'Sal ' + cod + ': -' + qtd + ' g (' + motivo + ')');
+    R8.toast.ok('Baixa de sal registrada!');
+    document.getElementById('baixaSalQtd').value = '';
+    document.getElementById('baixaSalObs').value = '';
+    _r8PopularSelectBaixaSal();
+    try { if (typeof atualizarListaSaisERP === 'function') atualizarListaSaisERP(); } catch (e) {}
+};
+
+// ── Baixa manual de MATERIAL DE LIMPEZA (L) — o saldo é a própria quantidade do cadastro ──
+function _r8PopularSelectBaixaLimpeza() {
+    var sel = document.getElementById('baixaLimpezaId');
+    if (!sel) return;
+    var opcoes = (dadosERP.produtosLimpeza || []).filter(function(p){ return (p.qtd || 0) > 0.0001; })
+        .sort(function(a,b){ return (a.descricao||'').localeCompare(b.descricao||''); });
+    sel.innerHTML = '<option value="">Selecione...</option>' + opcoes.map(function(p){
+        return '<option value="'+R8.esc(String(p.id))+'">'+R8.esc(p.descricao||p.codigo)+(p.lote?' (lote '+R8.esc(p.lote)+')':'')+' — '+(p.qtd||0).toFixed(2)+' L</option>';
+    }).join('');
+    var info = document.getElementById('baixaLimpezaSaldoInfo'); if (info) info.textContent = '';
+}
+window._r8AtualizarSaldoBaixaLimpeza = function() {
+    var id = document.getElementById('baixaLimpezaId')?.value;
+    var info = document.getElementById('baixaLimpezaSaldoInfo');
+    if (!info) return;
+    var p = (dadosERP.produtosLimpeza||[]).find(function(x){ return String(x.id) === String(id); });
+    info.textContent = p ? ('Saldo atual: ' + (p.qtd||0).toFixed(2) + ' L') : '';
+};
+window.confirmarBaixaLimpeza = function() {
+    var id = document.getElementById('baixaLimpezaId')?.value;
+    var qtd = parseFloat(document.getElementById('baixaLimpezaQtd')?.value);
+    var motivo = document.getElementById('baixaLimpezaMotivo')?.value || 'Outro';
+    var obs = document.getElementById('baixaLimpezaObs')?.value || '';
+    if (!id) { R8.toast.aviso('Selecione o produto.'); return; }
+    if (!qtd || qtd <= 0) { R8.toast.aviso('Informe uma quantidade válida.'); return; }
+    var p = (dadosERP.produtosLimpeza||[]).find(function(x){ return String(x.id) === String(id); });
+    if (!p) { R8.toast.erro('Produto não encontrado.'); return; }
+    var saldoAntes = p.qtd || 0;
+    if (qtd > saldoAntes + 0.0001) { R8.toast.erro('Quantidade maior que o saldo (' + saldoAntes.toFixed(2) + ' L).'); return; }
+    p.qtd = Math.max(0, parseFloat((saldoAntes - qtd).toFixed(4)));
+    if (!dadosERP.movimentacoesEstoque) dadosERP.movimentacoesEstoque = [];
+    dadosERP.movimentacoesEstoque.push({
+        id: Date.now() + '_desclimp_' + p.codigo, data: obterDataHora(), tipo: 'saida',
+        categoria: 'limpeza', codigo: p.codigo, descricao: p.descricao, tipoInsumo: p.tipo,
+        quantidade: qtd, unidade: 'L', lote: p.lote || '',
+        origem: 'Descarte - ' + motivo, obs: obs, saldoAnterior: saldoAntes, saldoAtual: p.qtd
+    });
+    salvarDadosFirebase();
+    if (typeof registrarAuditoria === 'function') registrarAuditoria('Estoque', 'baixa', 'Limpeza ' + p.codigo + ': -' + qtd + ' L (' + motivo + ')');
+    R8.toast.ok('Baixa de material de limpeza registrada!');
+    document.getElementById('baixaLimpezaQtd').value = '';
+    document.getElementById('baixaLimpezaObs').value = '';
+    _r8PopularSelectBaixaLimpeza();
+    try { if (typeof atualizarListaLimpezaERP === 'function') atualizarListaLimpezaERP(); } catch (e) {}
+};
+
 // Baixa/descarte de produto acabado SEMPRE vinculada a uma embalagem (barril)
 // específica: cada barril envasado é um registro próprio em Produto Acabado
 // (lote + código do barril). A chave usada aqui é a mesma das Vendas PDV/TAP.
@@ -4998,7 +5100,7 @@ function _r8SaidaProducaoSal(codigo) {
     var liquido = 0;
     (dadosERP.movimentacoesEstoque||[]).forEach(function(m){
         if (m.categoria !== 'sais' || m.codigo !== codigo) return;
-        if (!m.origem || m.origem.indexOf('Ficha Técnica') !== 0) return; // só baixas/estornos da Produção
+        if (!m.origem || (m.origem.indexOf('Ficha Técnica') !== 0 && m.origem.indexOf('Descarte') !== 0)) return; // baixas/estornos da Produção e Descarte manual
         if (m.tipo === 'saida') liquido += (m.quantidade||0);
         else if (m.tipo === 'entrada') liquido -= (m.quantidade||0); // estorno reduz a saída líquida
     });
@@ -6859,6 +6961,15 @@ window._calcEficiencia = function() {
 // ═══════════════════════════════════════════════════════
 // ITEM 2: Auto-cálculo ABV a partir de OG e FG
 // ═══════════════════════════════════════════════════════
+// ABV: (OG−FG)×131,25 é ótima até ~1.050; em cervejas fortes subestima. Entre OG 1.050 e
+// 1.070 mistura gradualmente com a fórmula completa (Hall) e acima de 1.070 usa só ela —
+// assim as cervejas comuns não mudam (4,99 → 5,0) e as fortes ficam mais exatas.
+window._r8ABV = function(og, fg) {
+    var simples = (og - fg) * 131.25;
+    var completa = (76.08 * (og - fg) / (1.775 - og)) * (fg / 0.794);
+    var w = Math.min(1, Math.max(0, (og - 1.050) / 0.020));
+    return (1 - w) * simples + w * completa;
+};
 window._calcABV = function(modo) {
     var ogId = modo === 'plan' ? 'producaoOGPlan' : 'producaoOG';
     var fgId = modo === 'plan' ? 'producaoFGPlan' : 'producaoFG';
@@ -6867,7 +6978,7 @@ window._calcABV = function(modo) {
     var abvEl = document.getElementById(modo === 'plan' ? 'producaoABVPlan' : 'producaoABV');
     if (!abvEl) return;
     if (og > 1 && fg > 0 && fg < og) {
-        abvEl.value = ((og - fg) * 131.25).toFixed(1);
+        abvEl.value = window._r8ABV(og, fg).toFixed(1);
     } else {
         abvEl.value = '';
     }
@@ -10971,6 +11082,12 @@ window._irSanitizarTanque = function(codigo) {
 //     o caso de "Aguardando Retorno", onde faz sentido dar o Recebimento.
 window._r8BarrilFoiVendido = function(codigo, lote) {
     if (!codigo) return false;
+    // Só houve vendas parciais e ainda há chope no barril na Câmara Fria: ele não saiu de vez.
+    var _vs = (dadosERP.vendasTaps || []).concat(dadosERP.vendasPDV || []).filter(function(v){ return v.embalagemCodigo === codigo && (!lote || v.lote === lote); });
+    if (_vs.length && _vs.every(function(v){ return v.parcial; })) {
+        var _pr = (dadosERP.produtosAcabados || []).find(function(p){ return p.embalagemCodigo === codigo && (!lote || p.lote === lote); });
+        if (_pr && (_pr.camaraFria || 0) > 0.001) return false;
+    }
     var temTap = (dadosERP.vendasTaps || []).some(function(v){ return v.embalagemCodigo === codigo && (!lote || v.lote === lote); });
     if (temTap) return true;
     return (dadosERP.vendasPDV || []).some(function(v){ return v.embalagemCodigo === codigo && (!lote || v.lote === lote); });
@@ -10980,6 +11097,9 @@ window._localizacaoAtualEmbalagem = function(b) {
     var cod = b.codigo, lote = b.loteAtual || '';
 
     var vendasTap = (dadosERP.vendasTaps || []).filter(function(v){ return v.embalagemCodigo === cod && v.lote === lote; });
+    var _vendasDoBarril = vendasTap.concat((dadosERP.vendasPDV || []).filter(function(v){ return v.embalagemCodigo === cod && v.lote === lote; }));
+    var _prodLoc = (dadosERP.produtosAcabados || []).find(function(p){ return p.embalagemCodigo === cod && p.lote === lote; });
+    if (_vendasDoBarril.length && _vendasDoBarril.every(function(v){ return v.parcial; }) && _prodLoc && (_prodLoc.camaraFria || 0) > 0) return '❄️ Câmara Fria'; // só vendas parciais: o barril ainda está aqui
     if (vendasTap.length) return '🚰 TAP Rota 8';
 
     var vendasPdv = (dadosERP.vendasPDV || []).filter(function(v){ return v.embalagemCodigo === cod && v.lote === lote; });
@@ -11987,8 +12107,8 @@ function popularSelectLotesDisponveis(selectId,estiloInputId){
         // que reste saldo parcial calculado — tratado como unidade única
         // (o barril inteiro), não como um pool líquido divisível.
         if (p.embalagemCodigo) {
-            var jaVinculado = (dadosERP.vendasPDV||[]).some(function(v){ return v.lote===p.lote && v.embalagemCodigo===p.embalagemCodigo; })
-                || (dadosERP.vendasTaps||[]).some(function(v){ return v.lote===p.lote && v.embalagemCodigo===p.embalagemCodigo; });
+            var jaVinculado = (dadosERP.vendasPDV||[]).some(function(v){ return v.lote===p.lote && v.embalagemCodigo===p.embalagemCodigo && !v.parcial; })
+                || (dadosERP.vendasTaps||[]).some(function(v){ return v.lote===p.lote && v.embalagemCodigo===p.embalagemCodigo && !v.parcial; });
             if (jaVinculado) return false;
         }
         return true;
@@ -12106,9 +12226,10 @@ function salvarVendaPDV(){
     if(!dadosERP.vendasPDV)dadosERP.vendasPDV=[];
     var novaVendaId='V'+Date.now()+Math.random().toString(36).slice(2,7);
     dadosERP.vendasPDV.push({id:novaVendaId,tipo:'PDV',lote,tipoEmbalagem:prod.tipoEmbalagem||'',embalagemCodigo:prod.embalagemCodigo||'',embalagemDescricao:prod.embalagemDescricao||'',data,destino,estilo:prod.estilo,quantidade:qtd,precoPorLitro:preco,valorTotal:(qtd*preco),pagamento,observacoes:obs});
+    if(document.getElementById('vendaParcialPDV')?.checked) dadosERP.vendasPDV[dadosERP.vendasPDV.length-1].parcial=true;
     _r8CriarVendaFinanceiraAutomatica(novaVendaId,data,qtd*preco,pagamento,'Venda PDV — Lote '+lote+(destino?' — '+destino:''));
     salvarDadosLocal();
-    document.getElementById('vendaLotePDV').value='';document.getElementById('vendaEstiloPDV').value='';document.getElementById('vendaDataPDV').value=obterData();document.getElementById('vendaNomePDV').value='';document.getElementById('vendaQtdePDV').value='';document.getElementById('vendaObsPDV').value='';var pEl=document.getElementById('vendaPrecoPDV');if(pEl)pEl.value='';var tEl=document.getElementById('vendaTotalPDV');if(tEl){tEl.value='';tEl.style.background='#f0fdf4';}var pgEl=document.getElementById('vendaPagamentoPDV');if(pgEl)pgEl.value='';
+    document.getElementById('vendaLotePDV').value='';document.getElementById('vendaEstiloPDV').value='';document.getElementById('vendaDataPDV').value=obterData();document.getElementById('vendaNomePDV').value='';document.getElementById('vendaQtdePDV').value='';var _cpP=document.getElementById('vendaParcialPDV');if(_cpP)_cpP.checked=false;document.getElementById('vendaObsPDV').value='';var pEl=document.getElementById('vendaPrecoPDV');if(pEl)pEl.value='';var tEl=document.getElementById('vendaTotalPDV');if(tEl){tEl.value='';tEl.style.background='#f0fdf4';}var pgEl=document.getElementById('vendaPagamentoPDV');if(pgEl)pgEl.value='';
     R8.toast.ok('Venda PDV registrada — Lote: '+lote+' | '+qtd+'L');
     aplicarFiltrosVendasPDV();atualizarTabelaProdutoAcabado();popularSelectLotesDisponveis('vendaLotePDV','vendaEstiloPDV');
     setTimeout(_renderizarAlertasEstoque, 200);
@@ -12131,9 +12252,10 @@ function salvarVendaTAP(){
     if(!dadosERP.vendasTaps)dadosERP.vendasTaps=[];
     var novaVendaId='V'+Date.now()+Math.random().toString(36).slice(2,7);
     dadosERP.vendasTaps.push({id:novaVendaId,tipo:'TAP',lote,tipoEmbalagem:prod.tipoEmbalagem||'',embalagemCodigo:prod.embalagemCodigo||'',embalagemDescricao:prod.embalagemDescricao||'',data,estilo:prod.estilo,quantidade:qtd,precoPorLitro:preco,valorTotal:(qtd*preco),pagamento,observacoes:obs,saldoCamaraFriaApos:prod.camaraFria});
+    if(document.getElementById('vendaParcialTAP')?.checked) dadosERP.vendasTaps[dadosERP.vendasTaps.length-1].parcial=true;
     _r8CriarVendaFinanceiraAutomatica(novaVendaId,data,qtd*preco,pagamento,'Venda TAP — Lote '+lote);
     salvarDadosLocal();
-    document.getElementById('vendaLoteTAP').value='';document.getElementById('vendaEstiloTAP').value='';document.getElementById('vendaDataTAP').value=obterData();document.getElementById('vendaQtdeTAP').value='';document.getElementById('vendaObsTAP').value='';var pEl=document.getElementById('vendaPrecoTAP');if(pEl)pEl.value='';var tEl=document.getElementById('vendaTotalTAP');if(tEl){tEl.value='';tEl.style.background='#f0fdf4';}var pgEl=document.getElementById('vendaPagamentoTAP');if(pgEl)pgEl.value='';
+    document.getElementById('vendaLoteTAP').value='';document.getElementById('vendaEstiloTAP').value='';document.getElementById('vendaDataTAP').value=obterData();document.getElementById('vendaQtdeTAP').value='';document.getElementById('vendaObsTAP').value='';var _cpT=document.getElementById('vendaParcialTAP');if(_cpT)_cpT.checked=false;var pEl=document.getElementById('vendaPrecoTAP');if(pEl)pEl.value='';var tEl=document.getElementById('vendaTotalTAP');if(tEl){tEl.value='';tEl.style.background='#f0fdf4';}var pgEl=document.getElementById('vendaPagamentoTAP');if(pgEl)pgEl.value='';
     R8.toast.ok('Venda TAP registrada — Lote: '+lote+' | '+qtd+'L');
     aplicarFiltrosVendasTAP();atualizarTabelaProdutoAcabado();popularSelectLotesDisponveis('vendaLoteTAP','vendaEstiloTAP');
     setTimeout(_renderizarAlertasEstoque, 200);
@@ -15439,6 +15561,9 @@ window._r8HtmlStatusAtualBarril = function(info) {
 function _pubClassificarLocalBarril(b, vendasPDV, vendasTaps, produtosAcabados) {
     if (!b || b.status !== 'Em Uso') return '';
     var cod = b.codigo, lote = b.loteAtual || '';
+    var _vsPub = (vendasTaps || []).concat(vendasPDV || []).filter(function(v){ return v.embalagemCodigo === cod && v.lote === lote; });
+    var _prodPub = (produtosAcabados || []).find(function(p){ return p.embalagemCodigo === cod && p.lote === lote; });
+    if (_vsPub.length && _vsPub.every(function(v){ return v.parcial; }) && _prodPub && (_prodPub.camaraFria || 0) > 0) return '❄️ Câmara Fria'; // só vendas parciais: o barril ainda está na cervejaria
     var temTap = (vendasTaps || []).some(function(v){ return v.embalagemCodigo === cod && v.lote === lote; });
     if (temTap) return '🚰 TAP Rota 8';
     var vendasPdvDoBarril = (vendasPDV || []).filter(function(v){ return v.embalagemCodigo === cod && v.lote === lote; });
@@ -17665,7 +17790,7 @@ window.calcularRefratometro = function() {
     if (fgSG > ogSG) fgSG = ogSG;
     var fgBrix = window._sgToBrix(fgSG);
 
-    var abv = (ogSG - fgSG) * 131.25;
+    var abv = window._r8ABV(ogSG, fgSG);
     if (abv < 0) abv = 0;
 
     var apparentAttenuation = 0;
@@ -17855,11 +17980,13 @@ if(document.readyState === 'loading'){
     <!-- ── ESTOQUE: BAIXA/DESCARTE (Insumos e Produto Acabado) ── -->
     <div id="telaBaixaEstoque" class="tela">
         <div class="hdr"><div class="hdr-linha1"><button class="btn-tela-voltar" onclick="irParaTelaERP('telaSubEstoque')"><i class="fas fa-arrow-left"></i> Voltar</button><h2>Baixa de Estoque</h2></div><div class="hdr-acoes"><button class="btn-tela-pdf" style="background:#2c1810;color:#f0c674" onclick="_r8ConferirEstoque()"><i class="fas fa-clipboard-check"></i> Conferir estoque</button></div></div>
-        <p style="font-size:11.5px;color:#7a6a5a;text-align:center;margin:6px 0 12px;font-style:italic">Registre aqui a baixa de insumos ou produtos perdidos (vencidos, danificados, estragados) — sai do saldo e fica registrado nas Movimentações.</p>
+        <p style="font-size:11.5px;color:#7a6a5a;text-align:center;margin:6px 0 12px;font-style:italic">Registre aqui a baixa de insumos, sais, material de limpeza ou produtos perdidos (vencidos, danificados, estragados) — sai do saldo e fica registrado nas Movimentações.</p>
 
         <div style="display:flex;gap:6px;margin:0 0 12px;background:#f4ede0;border-radius:14px;padding:5px">
             <button id="tabBtnBaixa_insumo" onclick="_mudarAbaBaixaEstoque('insumo')" style="flex:1;border:1px solid transparent;border-radius:10px;padding:11px 4px;font-size:12px;font-weight:700;cursor:pointer;background:#2c1810;color:#f0c674"><i class="fas fa-seedling" style="margin-right:5px"></i>Insumo</button>
             <button id="tabBtnBaixa_produto" onclick="_mudarAbaBaixaEstoque('produto')" style="flex:1;border:1px solid #e5d9bd;border-radius:10px;padding:11px 4px;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#6b5847"><i class="fas fa-beer" style="margin-right:5px"></i>Produto Acabado</button>
+            <button id="tabBtnBaixa_sal" onclick="_mudarAbaBaixaEstoque('sal')" style="flex:1;border:1px solid #e5d9bd;border-radius:10px;padding:11px 4px;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#6b5847"><i class="fas fa-flask" style="margin-right:5px"></i>Sais</button>
+            <button id="tabBtnBaixa_limpeza" onclick="_mudarAbaBaixaEstoque('limpeza')" style="flex:1;border:1px solid #e5d9bd;border-radius:10px;padding:11px 4px;font-size:12px;font-weight:700;cursor:pointer;background:#fff;color:#6b5847"><i class="fas fa-pump-soap" style="margin-right:5px"></i>Limpeza</button>
         </div>
 
         <div id="tabConteudoBaixa_insumo">
@@ -17878,6 +18005,24 @@ if(document.readyState === 'loading'){
             <div class="campo-linha"><label>Motivo</label><select id="baixaProdutoMotivo"><option value="Estragado">Estragado/Contaminado</option><option value="Vencido">Vencido</option><option value="Quebra">Quebra/Acidente</option><option value="Outro">Outro</option></select></div>
             <div class="campo-linha"><label>Observação (opcional)</label><textarea id="baixaProdutoObs" rows="2" placeholder="Detalhes..."></textarea></div>
             <button class="btn-add-item" style="width:100%;background:#991b1b;color:#fff" onclick="confirmarBaixaProdutoAcabado()"><i class="fas fa-trash-alt"></i> Confirmar Baixa</button>
+        </div>
+
+        <div id="tabConteudoBaixa_sal" style="display:none">
+            <div class="campo-linha"><label>Sal de correção</label><select id="baixaSalCodigo" onchange="_r8AtualizarSaldoBaixaSal()"><option value="">Selecione...</option></select></div>
+            <div class="campo-linha" id="baixaSalSaldoInfo" style="font-size:12px;color:#64748b;margin-top:-6px"></div>
+            <div class="campo-linha"><label>Quantidade a baixar (g)</label><input type="number" id="baixaSalQtd" step="0.01" min="0" placeholder="0,00"></div>
+            <div class="campo-linha"><label>Motivo</label><select id="baixaSalMotivo"><option value="Vencido">Vencido</option><option value="Danificado">Danificado/Contaminado</option><option value="Perda/Quebra">Perda / Quebra</option><option value="Ajuste de inventário">Ajuste de inventário (contagem)</option><option value="Outro">Outro</option></select></div>
+            <div class="campo-linha"><label>Observação (opcional)</label><textarea id="baixaSalObs" rows="2" placeholder="Detalhes..."></textarea></div>
+            <button class="btn-add-item" style="width:100%;background:#991b1b;color:#fff" onclick="confirmarBaixaSal()"><i class="fas fa-trash-alt"></i> Confirmar Baixa</button>
+        </div>
+
+        <div id="tabConteudoBaixa_limpeza" style="display:none">
+            <div class="campo-linha"><label>Produto de limpeza</label><select id="baixaLimpezaId" onchange="_r8AtualizarSaldoBaixaLimpeza()"><option value="">Selecione...</option></select></div>
+            <div class="campo-linha" id="baixaLimpezaSaldoInfo" style="font-size:12px;color:#64748b;margin-top:-6px"></div>
+            <div class="campo-linha"><label>Quantidade a baixar (L)</label><input type="number" id="baixaLimpezaQtd" step="0.01" min="0" placeholder="0,00"></div>
+            <div class="campo-linha"><label>Motivo</label><select id="baixaLimpezaMotivo"><option value="Vencido">Vencido</option><option value="Danificado">Danificado/Contaminado</option><option value="Perda/Quebra">Perda / Quebra</option><option value="Ajuste de inventário">Ajuste de inventário (contagem)</option><option value="Outro">Outro</option></select></div>
+            <div class="campo-linha"><label>Observação (opcional)</label><textarea id="baixaLimpezaObs" rows="2" placeholder="Detalhes..."></textarea></div>
+            <button class="btn-add-item" style="width:100%;background:#991b1b;color:#fff" onclick="confirmarBaixaLimpeza()"><i class="fas fa-trash-alt"></i> Confirmar Baixa</button>
         </div>
     </div>
 
@@ -18612,6 +18757,7 @@ if(document.readyState === 'loading'){
             <div class="campo-linha"><label>Data Saída *</label><input type="date" id="vendaDataPDV" required></div>
             <div class="campo-linha"><label>Destino *</label><input type="text" id="vendaNomePDV" placeholder="Ex: Supermercado Centro" required></div>
             <div class="campo-linha"><label>Quantidade (L) *</label><input type="number" step="0.1" id="vendaQtdePDV" placeholder="0" oninput="_calcTotalVendaPDV()" required></div>
+            <div class="campo-linha"><label style="display:flex;gap:8px;align-items:flex-start;font-weight:600;font-size:12.5px;cursor:pointer"><input type="checkbox" id="vendaParcialPDV" style="width:auto;margin-top:2px"><span>Venda parcial — o barril continua disponível com o saldo restante<br><small style="font-weight:500;color:#7a6a5a">Desmarcado: o barril sai da lista de vendas depois desta venda (como sempre foi).</small></span></label></div>
             <div class="linha-dupla"><div><label>Preço p/ Litro (R$)</label><input type="text" inputmode="decimal" id="vendaPrecoPDV" placeholder="R$ 0,00" oninput="R8.mascaraMoeda(this);_calcTotalVendaPDV()"></div><div><label>Total (R$)</label><input type="text" id="vendaTotalPDV" placeholder="Auto" readonly style="background:#f0fdf4;font-weight:700"></div></div>
             <div class="campo-linha"><label>Forma de Pagamento</label><select id="vendaPagamentoPDV"><option value="">Selecione</option><option>Dinheiro</option><option>PIX</option><option>Cartão Débito</option><option>Cartão Crédito</option><option>Boleto</option><option>A prazo</option></select></div>
             <div class="campo-linha"><label>Observações</label><textarea id="vendaObsPDV" rows="3" placeholder="-" style="text-align:left"></textarea></div>
@@ -18635,6 +18781,7 @@ if(document.readyState === 'loading'){
             <div class="campo-linha"><label>Estilo</label><input type="text" id="vendaEstiloTAP" readonly placeholder="Preenchido automaticamente"></div>
             <div class="campo-linha"><label>Data *</label><input type="date" id="vendaDataTAP" required></div>
             <div class="campo-linha"><label>Quantidade (L) *</label><input type="number" step="0.1" id="vendaQtdeTAP" placeholder="0" oninput="_calcTotalVendaTAP()" required></div>
+            <div class="campo-linha"><label style="display:flex;gap:8px;align-items:flex-start;font-weight:600;font-size:12.5px;cursor:pointer"><input type="checkbox" id="vendaParcialTAP" style="width:auto;margin-top:2px"><span>Transferência parcial — o barril continua disponível com o saldo restante<br><small style="font-weight:500;color:#7a6a5a">Desmarcado: o barril sai da lista depois desta transferência (como sempre foi).</small></span></label></div>
             <div class="linha-dupla"><div><label>Preço p/ Litro (R$)</label><input type="text" inputmode="decimal" id="vendaPrecoTAP" placeholder="R$ 0,00" oninput="R8.mascaraMoeda(this);_calcTotalVendaTAP()"></div><div><label>Total (R$)</label><input type="text" id="vendaTotalTAP" placeholder="Auto" readonly style="background:#f0fdf4;font-weight:700"></div></div>
             <div class="campo-linha"><label>Forma de Pagamento</label><select id="vendaPagamentoTAP"><option value="">Selecione</option><option>Dinheiro</option><option>PIX</option><option>Cartão Débito</option><option>Cartão Crédito</option><option>Comanda</option></select></div>
             <div class="campo-linha"><label>Observações</label><textarea id="vendaObsTAP" rows="3" placeholder="-" style="text-align:left"></textarea></div>
