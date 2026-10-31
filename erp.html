@@ -26,7 +26,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-10-29-4';
+    window.R8_BUILD = '2026-10-29-7';
     // Data de hoje (AAAA-MM-DD) no horário LOCAL — toISOString() usa UTC e, depois das 21h no Brasil, devolvia amanhã.
     window._r8HojeISO = function() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); };
     (function() {
@@ -4806,6 +4806,10 @@ window._r8ConferirEstoque = function() {
         .map(function(i){ return i.codigo + ' — ' + (i.descricao || ''); });
     add('Insumos ligados a compra inexistente', orfaos, 'A compra foi excluída em outro lugar; o vínculo ficou solto.');
 
+    // 9) Chope vencido ou perto de vencer na Câmara Fria / barris atrasados nos clientes
+    add('Chope vencido ou perto de vencer', window._r8ChopeComValidadeAlerta().map(function(x){ return (x.p.embalagemCodigo || x.p.tipoEmbalagem) + ' · lote ' + x.p.lote + ': ' + (x.v.estado === 'vencido' ? 'venceu há ' + Math.abs(x.v.restantes) + ' d' : 'vence em ' + x.v.restantes + ' d'); }), 'Prazo usado: ' + window.R8_VALIDADE_BARRIL_DIAS + ' d (barril) / ' + window.R8_VALIDADE_OUTRAS_DIAS + ' d (garrafa, lata ou lote pasteurizado).');
+    add('Barris em clientes além do prazo', window._r8BarrisEmClientes().filter(function(x){ return x.atrasado; }).map(function(x){ return x.codigo + ' — ' + x.destino + ': ' + x.dias + ' dias'; }), 'Prazo para devolução: ' + window.R8_BARRIL_PRAZO_DIAS + ' dias.');
+
     // 8) Envase antes de a fermentação terminar (todas as fichas, exceto lotes legados)
     var envAl = [];
     (dadosERP.fichasTecnicas || []).forEach(function(f) {
@@ -7233,6 +7237,226 @@ function _dashKpi(label, valor, cor, ico, sub) {
         + '</div>';
 }
 
+// ══ PROGRESSO DA FERMENTAÇÃO + AVISO DOS 80% ══════════════════════════════
+// Progresso = quanto da queda de densidade planejada (OG → FG planejada) já aconteceu.
+//   pct = (OG − densidade atual) ÷ (OG − FG planejada) × 100
+// Aos 80% é a hora de agir: dry hop (biotransformação) e/ou subir a temperatura
+// (descanso de diacetil). Quando as últimas leituras param de cair, a fermentação estabilizou.
+window.R8_FERM_ALERTA_PCT = 80;
+window._r8ProgressoFermentacao = function(f) {
+    if (!f || f.legado) return null;
+    var pd = function(x) { var v = parseFloat(String(x == null ? '' : x).replace(',', '.')); if (!isFinite(v) || v <= 0) return null; if (v > 10) v /= 1000; return (v >= 0.98 && v <= 1.2) ? v : null; };
+    var meds = (f.fermentacao || []).filter(function(m) { return m && m.dataHora && pd(m.densidade); })
+        .sort(function(a, b) { return String(a.dataHora).localeCompare(String(b.dataHora)); });
+    if (!meds.length) return null;
+    var og = pd(f.og) || pd(f.ogPlan), fg = pd(f.fgPlan);
+    var atual = pd(meds[meds.length - 1].densidade);
+    var r = { og: og, fgPlan: fg, atual: atual, pct: null, estabilizada: false, acao: false, estado: 'sem-fg', msgs: [], dryDurante: [], dryApos: [], leituras: meds.length };
+    (f.lupulos || []).forEach(function(l) {
+        if (l && l.etapa === 'Dry Hop') {
+            var t = (l.descricao || l.codigo || 'lúpulo') + ' ' + (l.quantidade || '') + 'g';
+            (l.momento === 'apos' ? r.dryApos : r.dryDurante).push(t);
+        }
+    });
+    if (!og || !fg || og <= fg + 0.001) return r;
+    r.pct = Math.max(0, Math.round((og - atual) / (og - fg) * 100));
+    // estabilizada: últimas 2 leituras iguais (±0,001), com 20 h ou mais entre elas, e já perto da FG
+    if (meds.length >= 2) {
+        var a = meds[meds.length - 1], b = meds[meds.length - 2];
+        var horas = (new Date(a.dataHora) - new Date(b.dataHora)) / 3600000;
+        if (isFinite(horas) && horas >= 20 && Math.abs(pd(a.densidade) - pd(b.densidade)) <= 0.0011 && r.pct >= 90) r.estabilizada = true;
+    }
+    var lim = window.R8_FERM_ALERTA_PCT;
+    if (r.estabilizada) {
+        r.estado = 'estabilizada';
+        r.msgs.push('Fermentação estabilizada: pronta para trasfega, maturação ou envase.');
+        if (r.dryApos.length) r.msgs.push('Dry hop pós-fermentação: ' + r.dryApos.join(', ') + '.');
+    } else if (r.pct >= 100) {
+        r.estado = 'fg'; r.acao = true;
+        r.msgs.push('A densidade chegou à FG planejada. Confirme com outra leitura em cerca de 24 h (estabilização) antes do trasfega.');
+        if (r.dryDurante.length) r.msgs.push('Se ainda não fez: dry hop (' + r.dryDurante.join(', ') + ') e a subida de temperatura.');
+    } else if (r.pct >= lim) {
+        r.estado = 'ponto80'; r.acao = true;
+        var acoes = [];
+        if (r.dryDurante.length) acoes.push('dry hop durante a fermentação (biotransformação): ' + r.dryDurante.join(', '));
+        else acoes.push('dry hop (biotransformação), se a receita pedir');
+        acoes.push('subir a temperatura (descanso de diacetil)');
+        r.msgs.push('Passou dos ' + lim + '% — hora de: ' + acoes.join(' e/ou ') + '.');
+    } else if (r.pct >= lim - 15) {
+        r.estado = 'perto'; r.msgs.push('Chegando perto dos ' + lim + '%: prepare o dry hop e a temperatura.');
+    } else {
+        r.estado = 'ativa'; r.msgs.push('Fermentação em andamento.');
+    }
+    if (r.pct > 110) r.msgs.push('Densidade abaixo da FG planejada (' + fg.toFixed(3) + ').');
+    return r;
+};
+// Bloco do painel: lotes em fermentação com barra de progresso e a ação sugerida
+window._r8HtmlFermentacaoAndamento = function() {
+    var ativos = [];
+    (dadosERP.fichasTecnicas || []).forEach(function(f) {
+        if (['planejamento', 'finalizado', 'envase'].indexOf(f.statusLote) !== -1) return;
+        var p = window._r8ProgressoFermentacao(f);
+        if (p) ativos.push({ f: f, p: p });
+    });
+    if (!ativos.length) return '';
+    ativos.sort(function(x, y) { return (y.p.acao ? 1 : 0) - (x.p.acao ? 1 : 0) || (y.p.pct || 0) - (x.p.pct || 0); });
+    var cor = { ativa: '#3b82f6', perto: '#f59e0b', ponto80: '#dc2626', fg: '#f59e0b', estabilizada: '#10b981', 'sem-fg': '#94a3b8' };
+    var h = '<div style="font-size:10px;font-weight:700;color:#6b5b4e;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">🍺 Fermentação em andamento</div><div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px">';
+    ativos.forEach(function(a) {
+        var p = a.p, c = cor[p.estado] || '#94a3b8', w = p.pct == null ? 0 : Math.min(100, p.pct);
+        h += '<div style="background:#fff;border:1.5px solid ' + (p.acao ? '#dc2626' : '#e5d9bd') + ';border-radius:14px;padding:12px 14px">'
+            + '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><b style="font-size:14px;color:#2c1810">' + R8.esc(a.f.lote || '') + '</b><span style="font-size:11px;color:#7a6a5a">' + R8.esc(a.f.estilo || '') + '</span></div>'
+            + '<div style="height:8px;background:#f1ece0;border-radius:6px;margin:8px 0 6px;overflow:hidden"><div style="height:100%;width:' + w + '%;background:' + c + '"></div></div>'
+            + '<div style="display:flex;justify-content:space-between;font-size:11.5px;color:#57534e"><span>Densidade atual: <b>' + p.atual.toFixed(3) + '</b>' + (p.fgPlan ? ' · FG plan. ' + p.fgPlan.toFixed(3) : '') + '</span><b style="color:' + c + '">' + (p.pct == null ? '—' : p.pct + '%') + '</b></div>'
+            + '<div style="font-size:12px;color:' + (p.acao ? '#991b1b' : '#57534e') + ';font-weight:' + (p.acao ? '700' : '500') + ';margin-top:6px">' + (p.msgs.length ? p.msgs.map(function(m) { return R8.esc(m); }).join('<br>') : 'Sem FG planejada na ficha: não dá para calcular o progresso.') + '</div>'
+            + '</div>';
+    });
+    return h + '</div>';
+};
+// Aviso na hora de registrar a medição (só quando cruza os 80% ou estabiliza)
+window._r8AvisoFermentacaoForm = function(itemNovo) {
+    try {
+        var meds = (window.medicoesFermentacaoProducao || []).slice();
+        var mk = function(lista) {
+            return { og: document.getElementById('producaoOG')?.value, ogPlan: document.getElementById('producaoOGPlan')?.value, fgPlan: document.getElementById('producaoFGPlan')?.value,
+                     legado: !!document.getElementById('producaoLegado')?.checked, fermentacao: lista, lupulos: window.adicoesLupuloProducao || [] };
+        };
+        var agora = window._r8ProgressoFermentacao(mk(meds)), antes = window._r8ProgressoFermentacao(mk(meds.filter(function(m){ return m !== itemNovo; })));
+        if (!agora) return;
+        if (agora.estabilizada && !(antes && antes.estabilizada)) R8.toast.aviso('✅ ' + agora.msgs.join(' '), 10000);
+        else if (agora.acao && !(antes && antes.acao)) R8.toast.aviso('⏰ ' + agora.pct + '% da fermentação. ' + agora.msgs.join(' '), 12000);
+    } catch (e) {}
+};
+
+// ══ RENDIMENTO E PERDAS POR LOTE ══════════════════════════════════════════
+// Acompanha o caminho do volume: pré-fervura → fermentador (volume do lote) → envasado.
+// Perda do fermentador ao pacote = volume do lote − total envasado (trub, levedura, purgas,
+// volume morto). Referência usual: até ~8% é bom, até ~12% pede atenção, acima disso é alto.
+window.R8_PERDA_BOA_PCT = 8;
+window.R8_PERDA_ATENCAO_PCT = 12;
+window._r8RendimentoLote = function(f) {
+    if (!f || f.legado) return null;
+    var num = function(x) { var v = parseFloat(String(x == null ? '' : x).replace(',', '.')); return isFinite(v) && v > 0 ? v : null; };
+    var soma = function(lista, campo) { return (lista || []).reduce(function(a, x) { return a + (num(x && x[campo]) || 0); }, 0); };
+    var v0 = num(f.volume);
+    var envasado = soma(f.envases, 'volume') || (f.envases || []).reduce(function(a, e) { return a + (num(e && e.volumeTotal) || 0); }, 0);
+    if (!v0 || !envasado) return null;
+    var pre = num(f.volPreFervura) || num(f.volPreFervuraPlan);
+    var purgas = soma(f.purgasRegistros, 'volume');
+    var perdaL = v0 - envasado, perdaPct = perdaL / v0 * 100;
+    var estado = perdaPct < -0.5 ? 'confira' : (perdaPct <= window.R8_PERDA_BOA_PCT ? 'bom' : (perdaPct <= window.R8_PERDA_ATENCAO_PCT ? 'atencao' : 'alto'));
+    return { pre: pre, v0: v0, envasado: envasado, purgas: purgas, perdaL: perdaL, perdaPct: perdaPct, estado: estado,
+             preParaFerm: pre ? (pre - v0) : null, preParaFermPct: pre ? ((pre - v0) / pre * 100) : null };
+};
+window._r8HtmlRendimento = function() {
+    var lotes = [];
+    (dadosERP.fichasTecnicas || []).forEach(function(f) {
+        if (f.statusLote !== 'envase' && f.statusLote !== 'finalizado') return;
+        var r = window._r8RendimentoLote(f);
+        if (r) lotes.push({ f: f, r: r });
+    });
+    if (!lotes.length) return '';
+    lotes.sort(function(a, b) { return String(b.f.dataProducao || '').localeCompare(String(a.f.dataProducao || '')); });
+    var recentes = lotes.slice(0, 6);
+    var validos = recentes.filter(function(x) { return x.r.estado !== 'confira'; });
+    var media = validos.length ? validos.reduce(function(a, x) { return a + x.r.perdaPct; }, 0) / validos.length : null;
+    var cor = { bom: '#10b981', atencao: '#f59e0b', alto: '#dc2626', confira: '#6366f1' };
+    var fmt = function(n) { return n.toFixed(1).replace('.', ','); };
+    var h = '<div style="font-size:10px;font-weight:700;color:#6b5b4e;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">💧 Rendimento por lote</div>'
+        + '<div style="background:#fff;border:1.5px solid #e5d9bd;border-radius:14px;padding:12px 14px;margin-bottom:16px">'
+        + '<div style="font-size:12px;color:#57534e;margin-bottom:8px">' + (media == null ? '' : 'Perda média (fermentador → pacote), últimos ' + validos.length + ' lote(s): <b>' + fmt(media) + '%</b> &nbsp;<span style="color:#a8a29e">(bom ≤ ' + window.R8_PERDA_BOA_PCT + '%)</span>') + '</div>';
+    recentes.forEach(function(x) {
+        var r = x.r, c = cor[r.estado];
+        h += '<div style="border-top:1px solid #f1ece0;padding:8px 0">'
+            + '<div style="display:flex;justify-content:space-between;gap:8px"><b style="font-size:13px;color:#2c1810">' + R8.esc(x.f.lote || '') + '</b><b style="font-size:13px;color:' + c + '">' + (r.estado === 'confira' ? 'confira' : fmt(r.perdaPct) + '% de perda') + '</b></div>'
+            + '<div style="font-size:11.5px;color:#57534e;margin-top:3px">' + (r.pre ? fmt(r.pre) + ' L pré-fervura → ' : '') + fmt(r.v0) + ' L no fermentador → <b>' + fmt(r.envasado) + ' L envasados</b></div>'
+            + '<div style="font-size:11px;color:#7a6a5a;margin-top:2px">'
+            + (r.estado === 'confira' ? 'Envasado maior que o volume do lote: confira os volumes.' : 'Perdeu ' + fmt(r.perdaL) + ' L do fermentador ao pacote' + (r.purgas ? ' (purgas registradas: ' + fmt(r.purgas) + ' L)' : '') + '.')
+            + (r.preParaFermPct != null && r.preParaFermPct > 0 ? ' Da pré-fervura ao fermentador: ' + fmt(r.preParaFerm) + ' L (' + fmt(r.preParaFermPct) + '%).' : '')
+            + '</div></div>';
+    });
+    return h + '</div>';
+};
+
+// ══ BARRIS EM CLIENTES + VALIDADE DO CHOPE ═════════════════════════════════
+// Valores de referência (ajuste aqui se o seu processo for outro):
+window.R8_BARRIL_PRAZO_DIAS = 30;          // dias que um barril pode ficar no cliente antes de ser cobrado
+window.R8_VALIDADE_BARRIL_DIAS = 60;       // chope em barril (sem pasteurizar), contado a partir do envase
+window.R8_VALIDADE_OUTRAS_DIAS = 120;      // garrafa/lata, ou lote com pasteurização adequada
+window.R8_VALIDADE_AVISO_DIAS = 7;         // avisa quando faltarem até X dias para vencer
+window._r8DiasDesde = function(iso) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
+    if (!m) return null;
+    var d = new Date(+m[1], +m[2] - 1, +m[3]), h = new Date();
+    h = new Date(h.getFullYear(), h.getMonth(), h.getDate());
+    return Math.round((h - d) / 86400000);
+};
+window._r8FmtDataBR = function(iso) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || '')); return m ? m[3] + '/' + m[2] : String(iso || ''); };
+// Barris que saíram em venda PDV e ainda não voltaram (sem data de retorno)
+window._r8BarrisEmClientes = function() {
+    var lista = [];
+    (dadosERP.barris || []).forEach(function(b) {
+        if (b.status !== 'Em Uso') return;
+        var vs = (dadosERP.vendasPDV || []).filter(function(v) { return v.embalagemCodigo === b.codigo && !v.dataRetorno && (!b.loteAtual || v.lote === b.loteAtual); });
+        if (!vs.length) return;
+        var prod = (dadosERP.produtosAcabados || []).find(function(p) { return p.embalagemCodigo === b.codigo && (!b.loteAtual || p.lote === b.loteAtual); });
+        if (vs.every(function(v) { return v.parcial; }) && prod && (prod.camaraFria || 0) > 0.001) return; // venda parcial: o barril ainda está aqui
+        vs.sort(function(a, c) { return String(c.data).localeCompare(String(a.data)); });
+        var v = vs[0], dias = window._r8DiasDesde(v.data);
+        if (dias == null || dias < 0) return;
+        lista.push({ codigo: b.codigo, lote: v.lote, estilo: v.estilo || '', destino: v.destino || 'destino não informado', data: v.data, dias: dias, atrasado: dias > window.R8_BARRIL_PRAZO_DIAS });
+    });
+    return lista.sort(function(a, c) { return c.dias - a.dias; });
+};
+// Validade do chope que está na Câmara Fria
+window._r8ValidadeProduto = function(p) {
+    if (!p || !p.dataEnvase) return null;
+    var dias = window._r8DiasDesde(p.dataEnvase);
+    if (dias == null || dias < 0) return null;
+    var pasteurizado = (dadosERP.pasteurizacoes || []).some(function(x) { return x.lote === p.lote && x.status === 'Adequado'; });
+    var prazo = (pasteurizado || p.tipoEmbalagem !== 'Barril') ? window.R8_VALIDADE_OUTRAS_DIAS : window.R8_VALIDADE_BARRIL_DIAS;
+    var rest = prazo - dias;
+    return { dias: dias, prazo: prazo, restantes: rest, pasteurizado: pasteurizado, estado: rest < 0 ? 'vencido' : (rest <= window.R8_VALIDADE_AVISO_DIAS ? 'vencendo' : 'ok') };
+};
+window._r8ChopeComValidadeAlerta = function() {
+    var out = [];
+    (dadosERP.produtosAcabados || []).forEach(function(p) {
+        if ((p.camaraFria || 0) <= 0.001) return;
+        var v = window._r8ValidadeProduto(p);
+        if (v && v.estado !== 'ok') out.push({ p: p, v: v });
+    });
+    return out.sort(function(a, c) { return a.v.restantes - c.v.restantes; });
+};
+window._r8HtmlBarrisClientes = function() {
+    var l = window._r8BarrisEmClientes();
+    if (!l.length) return '';
+    var atras = l.filter(function(x) { return x.atrasado; });
+    var h = '<div style="font-size:10px;font-weight:700;color:#6b5b4e;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">🛢️ Barris em clientes</div>'
+        + '<div style="background:#fff;border:1.5px solid ' + (atras.length ? '#dc2626' : '#e5d9bd') + ';border-radius:14px;padding:12px 14px;margin-bottom:16px">'
+        + '<div style="font-size:12px;color:#57534e;margin-bottom:6px"><b>' + l.length + '</b> barril(is) fora' + (atras.length ? ' · <b style="color:#dc2626">' + atras.length + ' com mais de ' + window.R8_BARRIL_PRAZO_DIAS + ' dias</b>' : ' · nenhum atrasado (prazo ' + window.R8_BARRIL_PRAZO_DIAS + ' dias)') + '</div>';
+    l.slice(0, 8).forEach(function(x) {
+        h += '<div style="border-top:1px solid #f1ece0;padding:7px 0;display:flex;justify-content:space-between;gap:8px;font-size:12px">'
+            + '<span style="color:#2c1810"><b>' + R8.esc(x.codigo) + '</b> — ' + R8.esc(x.destino) + '<br><span style="font-size:11px;color:#7a6a5a">Lote ' + R8.esc(x.lote) + ' · saiu em ' + window._r8FmtDataBR(x.data) + '</span></span>'
+            + '<b style="color:' + (x.atrasado ? '#dc2626' : '#57534e') + ';white-space:nowrap">' + x.dias + ' dia(s)</b></div>';
+    });
+    if (l.length > 8) h += '<div style="font-size:11px;color:#a8a29e;padding-top:6px">… e mais ' + (l.length - 8) + ' barril(is).</div>';
+    return h + '</div>';
+};
+window._r8HtmlValidadeChope = function() {
+    var l = window._r8ChopeComValidadeAlerta();
+    if (!l.length) return '';
+    var h = '<div style="font-size:10px;font-weight:700;color:#6b5b4e;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">⏳ Validade do chope (Câmara Fria)</div>'
+        + '<div style="background:#fff;border:1.5px solid #dc2626;border-radius:14px;padding:12px 14px;margin-bottom:16px">';
+    l.slice(0, 8).forEach(function(x) {
+        var venc = x.v.estado === 'vencido';
+        h += '<div style="border-top:1px solid #f1ece0;padding:7px 0;display:flex;justify-content:space-between;gap:8px;font-size:12px">'
+            + '<span style="color:#2c1810"><b>' + R8.esc(x.p.embalagemCodigo || x.p.tipoEmbalagem || '') + '</b> — Lote ' + R8.esc(x.p.lote) + '<br><span style="font-size:11px;color:#7a6a5a">' + (parseFloat(x.p.camaraFria) || 0).toFixed(1) + ' L · envasado há ' + x.v.dias + ' d (validade ' + x.v.prazo + ' d)</span></span>'
+            + '<b style="color:' + (venc ? '#dc2626' : '#d97706') + ';white-space:nowrap">' + (venc ? 'venceu há ' + Math.abs(x.v.restantes) + ' d' : 'vence em ' + x.v.restantes + ' d') + '</b></div>';
+    });
+    if (l.length > 8) h += '<div style="font-size:11px;color:#a8a29e;padding-top:6px">… e mais ' + (l.length - 8) + '.</div>';
+    return h + '</div>';
+};
+
 // ── Indicadores de alerta: sino da topbar + badges nos cards do menu ──
 // Reaproveita as mesmas regras já usadas no Dashboard e nos Alertas de Estoque,
 // só que consolidadas para ficarem visíveis em QUALQUER tela, não só ao entrar no módulo.
@@ -7292,17 +7516,21 @@ window._atualizarIndicadoresAlerta = function() {
             }).length;
         } catch(e) {}
 
-        var totalCritico = totalEstoque + sanitsVencidas + fermTravadas;
+        var fermAcao = 0;
+        try { fermAcao = fichas.filter(function(f){ if(f.statusLote === 'finalizado' || f.statusLote === 'envase') return false; var pf = window._r8ProgressoFermentacao(f); return pf && pf.acao; }).length; } catch(e) {}
+        var barrisAtrasados = 0, chopeAlerta = 0;
+        try { barrisAtrasados = window._r8BarrisEmClientes().filter(function(x){ return x.atrasado; }).length; chopeAlerta = window._r8ChopeComValidadeAlerta().length; } catch(e) {}
+        var totalCritico = totalEstoque + sanitsVencidas + fermTravadas + fermAcao + barrisAtrasados + chopeAlerta;
         var embalagensEmUso = (dadosERP.barris||[]).filter(function(b){ return b.status === 'Em Uso'; }).length;
         var tanquesAguardSanit = (dadosERP.equipamentos||[]).filter(function(t){ return t.tipo === 'Tanques Fermentação/Maturação' && t.status === 'Aguardando Sanitização'; }).length;
         var barrisAguardSanit = (dadosERP.barris||[]).filter(function(b){ return b.status === 'Aguardando Sanitização'; }).length;
         var totalAguardSanit = tanquesAguardSanit + barrisAguardSanit;
 
-        _setBadge('badgeProcesso', lotesAtivos, fermTravadas > 0);
+        _setBadge('badgeProcesso', lotesAtivos, fermTravadas > 0 || fermAcao > 0);
         _setBadge('badgeEstoque', totalEstoque, insCriticos > 0);
         _setBadge('badgeSanitizacao', sanitsVencidas + totalAguardSanit, (sanitsVencidas + totalAguardSanit) > 0);
         _setBadge('badgePasteurizacao', pastPendentes, false);
-        _setBadge('badgeEmbalagens', embalagensEmUso, false);
+        _setBadge('badgeEmbalagens', embalagensEmUso, barrisAtrasados > 0);
         _setBadge('badgeTanques', tanquesAguardSanit, tanquesAguardSanit > 0);
         _setBadge('erpAlertBadge', totalCritico + totalAguardSanit, (totalCritico + totalAguardSanit) > 0);
     } catch(e) { /* nunca deve travar a navegação por causa de um badge */ }
@@ -8939,6 +9167,7 @@ window.salvarFermentacaoERP=function(){
     if(_editSecaoProducao==='listaFermentacaoProducao'&&_editIdxProducao!==null){window.medicoesFermentacaoProducao[_editIdxProducao]=item;_editIdxProducao=null;_editSecaoProducao=null;}
     else{window.medicoesFermentacaoProducao.push(item);}
     _renderListaFermentacao();fecharFormERP('formFermentacaoProducao');
+    window._r8AvisoFermentacaoForm(item);
 };
 
 window.salvarTrasfegaERP=function(){
@@ -12052,6 +12281,8 @@ function atualizarTabelaProdutoAcabado(){
             if ((it.pdv||0) > 0) partes.push('<span style="color:#c49a2b;font-weight:700">PDV ' + (it.pdv||0).toFixed(1) + 'L</span>');
             if ((it.taps||0) > 0) partes.push('<span style="color:#7c3aed;font-weight:700">TAP ' + (it.taps||0).toFixed(1) + 'L</span>');
             if ((it.descartado||0) > 0) partes.push('<span style="color:#991b1b;font-weight:700">Descarte ' + (it.descartado||0).toFixed(1) + 'L</span>');
+            var _val = ((it.camaraFria||0) > 0) ? window._r8ValidadeProduto(it) : null;
+            if (_val) partes.push('<span style="font-size:11px;font-weight:700;color:' + (_val.estado==='vencido'?'#dc2626':(_val.estado==='vencendo'?'#d97706':'#64748b')) + '">⏳ ' + (_val.estado==='vencido' ? 'vencido há ' + Math.abs(_val.restantes) + ' d' : 'vence em ' + _val.restantes + ' d') + ' · envasado há ' + _val.dias + ' d</span>');
             if (!partes.length) partes.push('<span style="color:#dc2626;font-weight:700">Esgotado</span>');
             var chaveBaixa = String(it.lote + '|' + (it.embalagemCodigo || it.tipoEmbalagem || '')).replace(/\\/g,'\\\\').replace(/'/g, "\\'");
             var btnBaixa = ((it.camaraFria||0) > 0)
@@ -12117,15 +12348,18 @@ function popularSelectLotesDisponveis(selectId,estiloInputId){
     // para embalagens sem cadastro individual) — cada embalagem envasada
     // continua sendo UM registro próprio na busca (pra bloquear o barril
     // exato escolhido), mas o saldo mostrado é o do lote inteiro.
-    lotes.sort(function(a,b){ return (a.lote+String(a.embalagemCodigo||a.tipoEmbalagem)).localeCompare(b.lote+String(b.embalagemCodigo||b.tipoEmbalagem)); });
-    lotes.forEach(function(p){
+    // Mais antigo primeiro (PEPS): o chope envasado há mais tempo aparece no topo da lista
+    lotes.sort(function(a,b){ return String(a.dataEnvase||'9999').localeCompare(String(b.dataEnvase||'9999')) || (a.lote+String(a.embalagemCodigo||a.tipoEmbalagem)).localeCompare(b.lote+String(b.embalagemCodigo||b.tipoEmbalagem)); });
+    lotes.forEach(function(p, _ix){
         var chaveEmb = p.embalagemCodigo || p.tipoEmbalagem || '';
         var chave = p.lote + '|' + chaveEmb;
         var saldoLote = saldoPorLote[p.lote]||0;
         var rotuloEmb = p.embalagemCodigo
             ? ' · ' + (p.tipoEmbalagem||'Barril') + ' [' + p.embalagemCodigo + ']' + (p.embalagemDescricao?' — '+p.embalagemDescricao:'')
             : (p.tipoEmbalagem ? ' · ' + p.tipoEmbalagem : '');
-        s.innerHTML+='<option value="'+chave+'" data-estilo="'+p.estilo+'" data-quantidade="'+saldoLote+'">'+p.lote+rotuloEmb+' — '+p.estilo+' ('+saldoLote.toFixed(1)+'L disponível no lote)</option>';
+        var _vv = window._r8ValidadeProduto(p);
+        var _idade = _vv ? ' · envasado há '+_vv.dias+' d'+(_vv.estado==='vencido'?' (VENCIDO)':(_vv.estado==='vencendo'?' (vence em '+_vv.restantes+' d)':'')) : '';
+        s.innerHTML+='<option value="'+chave+'" data-estilo="'+p.estilo+'" data-quantidade="'+saldoLote+'">'+(_ix===0&&lotes.length>1&&_vv?'⭐ Mais antigo: ':'')+p.lote+rotuloEmb+' — '+p.estilo+' ('+saldoLote.toFixed(1)+'L disponível no lote)'+_idade+'</option>';
     });
     if(estiloInputId){s.onchange=function(){let opt=this.options[this.selectedIndex];let estilo=opt?.getAttribute('data-estilo')||'';let el=document.getElementById(estiloInputId);if(el)el.value=estilo;};}
 }
@@ -17288,7 +17522,7 @@ window.renderDashboard = function() {
     var eficMedia = fichasComEfic.length ? fichasComEfic.reduce(function(a,f){var e=((parseFloat(f.og)-1)/(parseFloat(f.ogPlan)-1))*100;return a+e;},0)/fichasComEfic.length : null;
     var analises = dadosERP.analisesSensoriais || [];
     var notaMedia = analises.length ? analises.reduce(function(a,s){return a+s.total;},0)/analises.length : null;
-    var extra = '<div style="font-size:10px;font-weight:700;color:#6b5b4e;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">📊 Qualidade & Desempenho</div>';
+    var extra = window._r8HtmlFermentacaoAndamento() + window._r8HtmlValidadeChope() + window._r8HtmlBarrisClientes() + window._r8HtmlRendimento() + '<div style="font-size:10px;font-weight:700;color:#6b5b4e;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">📊 Qualidade & Desempenho</div>';
     extra += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">';
     extra += _dashKpi('OG atingida',eficMedia?eficMedia.toFixed(1)+'%':'—', eficMedia?(eficMedia>=80?'#10b981':eficMedia>=70?'#f59e0b':'#ef4444'):'#94a3b8','fa-percentage', eficMedia?'OG real ÷ OG planejada':'Sem dados');
     extra += _dashKpi('Nota Sensorial',notaMedia?notaMedia.toFixed(1)+'/60':'—', notaMedia?(notaMedia>=48?'#10b981':notaMedia>=36?'#c49a2b':'#ef4444'):'#94a3b8','fa-star', notaMedia?'Degustações':'Sem análises');
