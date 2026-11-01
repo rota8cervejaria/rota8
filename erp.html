@@ -26,7 +26,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-10-29-7';
+    window.R8_BUILD = '2026-10-29-8';
     // Data de hoje (AAAA-MM-DD) no horário LOCAL — toISOString() usa UTC e, depois das 21h no Brasil, devolvia amanhã.
     window._r8HojeISO = function() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); };
     (function() {
@@ -9372,6 +9372,86 @@ window.corrigirDuplicidadeBaixaInsumos = function() {
     console.log('[R8] Correção de duplicidade de estoque:\n' + relatorio.join('\n'));
 };
 
+// ══ REVISÃO DA FICHA ANTES DE GRAVAR/FINALIZAR ═══════════════════════════
+// Junta numa lista só o que costuma dar problema. "Importantes" pedem confirmação ao gravar;
+// "atenção" só avisam. Lote legado não passa por esta revisão.
+window._r8RevisarFicha = function(f) {
+    var imp = [], avi = [];
+    if (!f || f.legado) return { importantes: imp, avisos: avi };
+    var num = function(x) { var v = parseFloat(String(x == null ? '' : x).replace(',', '.')); return isFinite(v) && v > 0 ? v : null; };
+    var dens = function(x) { var v = num(x); if (!v) return null; if (v > 10) v /= 1000; return (v >= 0.98 && v <= 1.2) ? v : null; };
+    var ordem = ['planejamento', 'producao', 'fermentacao', 'maturacao', 'envase', 'finalizado'];
+    var fase = ordem.indexOf(f.statusLote || 'planejamento'); if (fase < 0) fase = 0;
+    var vol = num(f.volume);
+    // ── importantes ──
+    var levG = (f.insumos || []).filter(function(i) { return i && i.tipo === 'Levedura'; })
+        .reduce(function(a, i) { return a + ((i.unidade === 'kg') ? (num(i.quantidade) || 0) * 1000 : (num(i.quantidade) || 0)); }, 0);
+    if (levG > 0 && vol && levG / vol > 3) imp.push('Dose de levedura parece errada: ' + Math.round(levG) + ' g para ' + vol + ' L (' + (levG / vol).toFixed(1).replace('.', ',') + ' g/L). O normal é 0,5 a 2 g/L de levedura seca.');
+    var envTot = (f.envases || []).reduce(function(a, e) { return a + (num(e && e.volume) || 0); }, 0);
+    if (vol && envTot > vol * 1.005) imp.push('Foram envasados ' + envTot.toFixed(1).replace('.', ',') + ' L, mais que o volume do lote (' + vol + ' L).');
+    if ((f.statusLote === 'envase' || f.statusLote === 'finalizado') && !(f.envases || []).length) imp.push('O lote está em "' + (f.statusLote === 'envase' ? 'Envase' : 'Finalizado') + '" mas não tem nenhum envase registrado.');
+    var ogR = dens(f.og), fgR = dens(f.fg), ogP = dens(f.ogPlan), fgP = dens(f.fgPlan);
+    if ((ogR && fgR && fgR >= ogR) || (ogP && fgP && fgP >= ogP)) imp.push('A FG está igual ou maior que a OG. Confira as densidades.');
+    if (typeof window._r8AlertasEnvase === 'function') window._r8AlertasEnvase(f).forEach(function(m) { imp.push('Envase: ' + m); });
+    // ── atenção ──
+    if (fase >= 2) {
+        if (!f.dataProducao) avi.push('Sem data de produção.');
+        if (!f.responsavel) avi.push('Sem responsável.');
+        if (!f.tanque) avi.push('Sem tanque definido.');
+        if (!vol) avi.push('Sem volume do lote (o rendimento por lote não consegue calcular).');
+        if (!ogR) avi.push('Sem OG real medida (o aviso dos 80% usa a OG planejada).');
+        if (!fgP) avi.push('Sem FG planejada (o aviso dos 80% da fermentação não funciona).');
+    }
+    if (fase >= 3 && !(f.fermentacao || []).length) avi.push('Lote em maturação ou adiante, mas sem nenhuma medição de fermentação.');
+    if (f.statusLote === 'finalizado' && !fgR) avi.push('Lote finalizado sem a FG real.');
+    if (!(f.insumos || []).length) avi.push('Sem insumos lançados na ficha.');
+    var most = f.mostura || [];
+    if (fase >= 1 && !most.length) avi.push('Sem etapas de mostura.');
+    else if (most.length && most.every(function(m) { return !m.temperatura && !m.tempAlvo; })) avi.push('Mostura sem nenhuma temperatura (alvo ou real).');
+    var lupSemAA = (f.lupulos || []).filter(function(l) { return !num(l.alphaAcid); }).length;
+    if (lupSemAA) avi.push(lupSemAA + ' adição(ões) de lúpulo sem alfa-ácido (o IBU não calcula).');
+    var lupSemTempo = (f.lupulos || []).filter(function(l) { return l.etapa === 'Fervura' && !num(l.tempo); }).length;
+    if (lupSemTempo) avi.push(lupSemTempo + ' lúpulo(s) de fervura sem tempo.');
+    var primSec = (num(f.aguaPrimaria) || 0) + (num(f.aguaSecundaria) || 0), aguaTot = num(f.aguaTotal);
+    if (aguaTot && primSec && Math.abs(aguaTot - primSec) > 0.5) avi.push('Água total (' + aguaTot + ' L) diferente de primária + secundária (' + primSec.toFixed(1).replace('.', ',') + ' L).');
+    var pre = num(f.volPreFervura) || num(f.volPreFervuraPlan);
+    if (pre && vol && pre < vol) avi.push('Volume pré-fervura (' + pre + ' L) menor que o volume do lote (' + vol + ' L).');
+    return { importantes: imp, avisos: avi };
+};
+window._r8FichaDoFormulario = function() {
+    var v = function(id) { return document.getElementById(id)?.value || ''; };
+    return { lote: v('producaoLote'), estilo: v('producaoEstilo'), dataProducao: v('producaoData'), tanque: v('producaoTanque'), responsavel: v('producaoResponsavel'),
+        volume: v('producaoVolume'), ogPlan: v('producaoOGPlan'), og: v('producaoOG'), fgPlan: v('producaoFGPlan'), fg: v('producaoFG'),
+        volPreFervura: v('producaoVolPreFervura'), volPreFervuraPlan: v('producaoVolPreFervuraPlan'),
+        aguaPrimaria: v('producaoAguaPrimaria'), aguaSecundaria: v('producaoAguaSecundaria'), aguaTotal: v('producaoAguaTotal'),
+        insumos: window.insumosAdicionadosProducao || [], mostura: window.etapasMosturaProducao || [], lupulos: window.adicoesLupuloProducao || [],
+        fermentacao: window.medicoesFermentacaoProducao || [], envases: window.envasesAdicionadosProducao || [],
+        statusLote: v('producaoStatusLote') || 'planejamento', legado: !!document.getElementById('producaoLegado')?.checked };
+};
+// Mostra a revisão. com opcoes.onGravar: oferece "Gravar mesmo assim"; sem: só "Fechar".
+window._r8MostrarRevisao = function(rev, opcoes) {
+    opcoes = opcoes || {};
+    var item = function(t, cor, bg) { return '<div style="font-size:12.5px;color:' + cor + ';background:' + bg + ';border-radius:10px;padding:8px 10px;margin-bottom:6px">' + R8.esc(t) + '</div>'; };
+    var total = rev.importantes.length + rev.avisos.length;
+    var corpo = '<div style="font-weight:800;font-size:17px;color:#2c1810;margin-bottom:4px">📋 Revisão da ficha</div>'
+        + '<div style="font-size:12px;color:#7a6a5a;margin-bottom:12px">' + (total ? total + ' ponto(s) para conferir.' : 'Tudo certo: nenhuma pendência encontrada.') + '</div>'
+        + (rev.importantes.length ? '<div style="font-size:11px;font-weight:800;color:#991b1b;margin:6px 0">IMPORTANTE (' + rev.importantes.length + ')</div>' + rev.importantes.map(function(t) { return item(t, '#7f1d1d', '#fef2f2'); }).join('') : '')
+        + (rev.avisos.length ? '<div style="font-size:11px;font-weight:800;color:#92400e;margin:10px 0 6px">ATENÇÃO (' + rev.avisos.length + ')</div>' + rev.avisos.map(function(t) { return item(t, '#78350f', '#fffbeb'); }).join('') : '');
+    var ov = document.getElementById('r8RevisaoFichaOverlay'); if (ov) ov.remove();
+    ov = document.createElement('div'); ov.id = 'r8RevisaoFichaOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:99999;display:flex;align-items:flex-end;justify-content:center';
+    var botoes = opcoes.onGravar
+        ? '<div style="display:flex;gap:8px;margin-top:10px"><button type="button" id="r8RevVoltar" style="flex:1;border:none;background:#2c1810;color:#f0c674;border-radius:12px;padding:12px;font-weight:800;font-size:14px;cursor:pointer">Voltar e corrigir</button><button type="button" id="r8RevGravar" style="flex:1;border:1.5px solid #991b1b;background:#fff;color:#991b1b;border-radius:12px;padding:12px;font-weight:800;font-size:14px;cursor:pointer">Gravar mesmo assim</button></div>'
+        : '<button type="button" id="r8RevVoltar" style="width:100%;margin-top:10px;border:none;background:#2c1810;color:#f0c674;border-radius:12px;padding:12px;font-weight:800;font-size:14px;cursor:pointer">Fechar</button>';
+    ov.innerHTML = '<div style="background:#fff;width:100%;max-width:560px;max-height:88vh;overflow:auto;border-radius:18px 18px 0 0;padding:18px 16px 24px">' + corpo + botoes + '</div>';
+    document.body.appendChild(ov);
+    ov.addEventListener('click', function(e) { if (e.target === ov) ov.remove(); });
+    ov.querySelector('#r8RevVoltar').addEventListener('click', function() { ov.remove(); });
+    var g = ov.querySelector('#r8RevGravar');
+    if (g) g.addEventListener('click', function() { ov.remove(); opcoes.onGravar(); });
+};
+window.revisarFichaERP = function() { window._r8MostrarRevisao(window._r8RevisarFicha(window._r8FichaDoFormulario())); };
+
 // ── LOTE LEGADO: nada de insumos/sais no cadastro nem no estoque ───────────
 // Itens criados automaticamente pela importação da receita (_bbAuto, saldo 0,
 // sem movimentação) que só pertencem a lotes legados são retirados do cadastro.
@@ -9499,8 +9579,19 @@ function salvarFichaTecnicaERP() {
         receitaBB:      window._bbEstadoJSON      || (editandoFichaIdx !== null && dadosERP.fichasTecnicas[editandoFichaIdx]?.receitaBB) || ''
     };
 
+    // Revisão da ficha: pendências importantes pedem confirmação; as demais só avisam
+    if (!ficha.legado) {
+        if (window._r8RevisaoConfirmada) { window._r8RevisaoConfirmada = false; }
+        else {
+            var _rev = window._r8RevisarFicha(ficha);
+            if (_rev.importantes.length) {
+                window._r8MostrarRevisao(_rev, { onGravar: function() { window._r8RevisaoConfirmada = true; salvarFichaTecnicaERP(); } });
+                return;
+            }
+            if (_rev.avisos.length) R8.toast.aviso('📋 Revisão da ficha: ' + _rev.avisos.length + ' ponto(s) de atenção. Toque em "Revisar" para ver.', 7000);
+        }
+    }
     if (ficha.legado) window._r8PurgarRastroLegado([ficha.lote], ficha); // lote legado: nenhum rastro em Insumos/Sais
-    try { var _alEnv = window._r8AlertasEnvase(ficha); if (_alEnv.length) R8.toast.aviso('⚠ Conferir envase: ' + _alEnv.join(' '), 9000); } catch (e) {}
 
     // ── EDIÇÃO: baixa/estorno de insumos pela DIFERENÇA em relação ao
     // que já havia sido baixado antes (evita baixar de novo o que já foi
@@ -18430,7 +18521,7 @@ if(document.readyState === 'loading'){
     </div>
 
     <div id="telaProcessoProducao" class="tela">
-        <div class="hdr hdr-empilhado"><div class="hdr-linha1"><button class="btn-tela-voltar" onclick="irParaTelaERP('telaSubProcesso')"><i class="fas fa-arrow-left"></i> Voltar</button><h2 id="tituloFicha">Ficha Técnica</h2><button type="button" id="btnVoltarReceitaBB" class="btn-tela-voltar" title="Voltar à receita (Brew Beer)" aria-label="Voltar à receita (Brew Beer)" style="min-width:80px" onclick="if(window._bbAbrirDaFicha)window._bbAbrirDaFicha();else if(window._bbAbrirComponente)window._bbAbrirComponente();else irParaTelaERP('telaSubProcesso')"><i class="fas fa-arrow-left"></i><i class="fas fa-clipboard-list"></i></button></div><div class="hdr-linha2"><div class="hdr-acoes"><button id="btnImportarReceita" class="btn-importar-receita" onclick="_importarReceita()" type="button"><i class="fas fa-file-import"></i> Importar Receita</button><input type="file" id="inputReceitaPDF" accept="application/pdf,.xml,.beerxml,.json,text/xml,application/xml" style="display:none" onchange="_onReceitaFileChange(this)"><button class="btn-tela-pdf" onclick="gerarPDFFichaAtual()"><i class="fas fa-file-pdf"></i> PDF</button><button class="btn-tela-gravar" onclick="salvarFichaTecnicaERP()"><i class="fas fa-save"></i> Gravar</button></div></div></div>
+        <div class="hdr hdr-empilhado"><div class="hdr-linha1"><button class="btn-tela-voltar" onclick="irParaTelaERP('telaSubProcesso')"><i class="fas fa-arrow-left"></i> Voltar</button><h2 id="tituloFicha">Ficha Técnica</h2><button type="button" id="btnVoltarReceitaBB" class="btn-tela-voltar" title="Voltar à receita (Brew Beer)" aria-label="Voltar à receita (Brew Beer)" style="min-width:80px" onclick="if(window._bbAbrirDaFicha)window._bbAbrirDaFicha();else if(window._bbAbrirComponente)window._bbAbrirComponente();else irParaTelaERP('telaSubProcesso')"><i class="fas fa-arrow-left"></i><i class="fas fa-clipboard-list"></i></button></div><div class="hdr-linha2"><div class="hdr-acoes"><button id="btnImportarReceita" class="btn-importar-receita" onclick="_importarReceita()" type="button"><i class="fas fa-file-import"></i> Importar Receita</button><input type="file" id="inputReceitaPDF" accept="application/pdf,.xml,.beerxml,.json,text/xml,application/xml" style="display:none" onchange="_onReceitaFileChange(this)"><button class="btn-tela-pdf" style="background:#2c1810;color:#f0c674;box-shadow:none" title="Revisar a ficha" aria-label="Revisar a ficha" onclick="revisarFichaERP()"><i class="fas fa-clipboard-check"></i> Revisar</button><button class="btn-tela-pdf" onclick="gerarPDFFichaAtual()"><i class="fas fa-file-pdf"></i> PDF</button><button class="btn-tela-gravar" onclick="salvarFichaTecnicaERP()"><i class="fas fa-save"></i> Gravar</button></div></div></div>
         <div class="secao">Identificação</div>
         <div class="campo-linha"><label>Nome</label><input type="text" id="producaoNome" placeholder="Ex: STOUT COFFEE" style="text-transform:uppercase" oninput="var p=this.selectionStart;this.value=this.value.toUpperCase();try{this.setSelectionRange(p,p)}catch(e){}"></div>
         <div class="campo-linha"><label>Estilo (BJCP) *</label><button type="button" id="producaoEstiloBtn" class="r8-estilo-btn" onclick="_r8AbrirEstiloFicha()"><span id="producaoEstiloTxt" class="txt vazio">Selecione o Estilo</span></button><select id="producaoEstilo" style="display:none"><option value="">Selecione</option></select></div>
