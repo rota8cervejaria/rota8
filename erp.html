@@ -26,7 +26,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-10-29-8';
+    window.R8_BUILD = '2026-11-01-2';
     // Data de hoje (AAAA-MM-DD) no horário LOCAL — toISOString() usa UTC e, depois das 21h no Brasil, devolvia amanhã.
     window._r8HojeISO = function() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); };
     (function() {
@@ -14365,7 +14365,15 @@ function gerarPDFFichaLayout(f,filename){
     const _LOOKAHEAD=20; // maior margem de segurança usada pelas checagens de quebra de página abaixo
     const _disponivel=_PB_CALC-31-_LOOKAHEAD;
     let _ESCALA=(FIXO+VARIAVEL)>_disponivel?((_disponivel-FIXO)/VARIAVEL):1;
-    _ESCALA=Math.max(0.65,Math.min(1,_ESCALA)); // piso de 65% preserva a legibilidade
+    _ESCALA=Math.max(0.25,Math.min(1,_ESCALA)); // piso de 25% (antes 65%): a ficha cabe em uma única A4 mesmo em lotes muito cheios
+    if(f._r8Extra) _ESCALA=Math.max(0.15,_ESCALA*f._r8Extra); // novas tentativas, se ainda estourou para a 2ª folha
+    // Abaixo de 65% as linhas ficam mais baixas que a letra: a fonte acompanha a redução (mínimo 50%)
+    const _FSCALE=_ESCALA<0.65?Math.max(0.45,_ESCALA/0.65):1;
+    let _fsAtivo=true;
+    if(_FSCALE<1){
+        const _sfs0=doc.setFontSize.bind(doc);
+        doc.setFontSize=function(v){return _sfs0(_fsAtivo?v*_FSCALE:v);};
+    }
 
     // alturas de linha (compactam automaticamente conforme o volume de dados da ficha)
     const LH=BASE_LH*_ESCALA;    // linha de dados padrão
@@ -14975,6 +14983,12 @@ function gerarPDFFichaLayout(f,filename){
         yBot=yy+_anotBodyH;
     }
 
+    // ══ GARANTIA DE UMA ÚNICA A4 ══
+    // Se, mesmo compactada, a ficha passou para uma 2ª folha, refaz o desenho com redução maior (até 6 tentativas).
+    if(doc.internal.getNumberOfPages()>1 && (f._r8Tent||0)<6){
+        return gerarPDFFichaLayout(Object.assign({},f,{_r8Extra:(f._r8Extra||1)*0.85,_r8Tent:(f._r8Tent||0)+1}),filename);
+    }
+    _fsAtivo=false; // assinaturas e rodapé no tamanho normal
     // ══ ASSINATURAS E RODAPÉ ══
     let yS=Math.max(yBot+4,H-20);
     // Se não cabe na página atual, nova página
@@ -17618,6 +17632,8 @@ window.renderDashboard = function() {
     extra += _dashKpi('OG atingida',eficMedia?eficMedia.toFixed(1)+'%':'—', eficMedia?(eficMedia>=80?'#10b981':eficMedia>=70?'#f59e0b':'#ef4444'):'#94a3b8','fa-percentage', eficMedia?'OG real ÷ OG planejada':'Sem dados');
     extra += _dashKpi('Nota Sensorial',notaMedia?notaMedia.toFixed(1)+'/60':'—', notaMedia?(notaMedia>=48?'#10b981':notaMedia>=36?'#c49a2b':'#ef4444'):'#94a3b8','fa-star', notaMedia?'Degustações':'Sem análises');
     extra += '</div>';
+    // Versão do sistema, visível depois do login (para conferir qual arquivo está no ar)
+    extra += '<div style="text-align:center;font-size:10.5px;color:#a89a86;letter-spacing:.4px;margin:6px 0 18px">Versão do sistema: BUILD-' + R8.esc(window.R8_BUILD || '?') + '</div>';
     el.innerHTML += extra;
 };
 
