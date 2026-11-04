@@ -26,7 +26,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-11-01-2';
+    window.R8_BUILD = '2026-11-03-6';
     // Data de hoje (AAAA-MM-DD) no horário LOCAL — toISOString() usa UTC e, depois das 21h no Brasil, devolvia amanhã.
     window._r8HojeISO = function() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); };
     (function() {
@@ -939,6 +939,7 @@
         .btn-tela-voltar{background:var(--dark);color:#fff;box-shadow:0 2px 6px rgba(0,0,0,0.15)}
         .btn-tela-voltar:hover{background:#4a2e1f;transform:translateY(-1px)}
 
+
         /* ── PASTEURIZAÇÃO ── */
         /* ── RECEITAS POR LOTE — cards ─────────────────── */
         .receita-lote-card {
@@ -1376,7 +1377,7 @@
         gap: 5px;
         width: 36px;
         height: 36px;
-        background: rgba(255,255,255,0.1);
+        background: #ef4444;
         border: none;
         border-radius: 8px;
         cursor: pointer;
@@ -1385,9 +1386,9 @@
     }
     .erp-ham-btn span {
         display: block;
-        width: 20px;
+        width: 18px;
         height: 2px;
-        background: #c49a2b;
+        background: #fff;
         border-radius: 2px;
         transition: 0.25s;
     }
@@ -5958,15 +5959,8 @@ window._renderizarAlertasEstoque = function() {
     // Um mesmo código pode ter vários registros (compras/lotes) — avalia
     // uma vez por código, usando o saldo real (Entrada - Saída), não o
     // valor bruto de cada registro isolado.
-    var codigosVistosAlerta = {};
+    // Seção "Insumos com estoque crítico" removida a pedido (só alertas de produtos acabados).
     var alertasInsumos = [];
-    (dadosERP.insumos || []).forEach(function(i){
-        if (codigosVistosAlerta[i.codigo]) return;
-        codigosVistosAlerta[i.codigo] = true;
-        var saldo = _r8SaldoAgrupadoInsumo(i.codigo);
-        if (saldo < 5) alertasInsumos.push({codigo:i.codigo, descricao:i.descricao, tipo:i.tipo, unidade:i.unidade, saldo:saldo});
-    });
-    alertasInsumos.sort(function(a,b){ return a.saldo - b.saldo; });
     var somaLoteAlerta = {};
     (dadosERP.produtosAcabados || []).forEach(function(p){
         if (!somaLoteAlerta[p.lote]) somaLoteAlerta[p.lote] = { lote:p.lote, estilo:p.estilo, camaraFria:0 };
@@ -5984,20 +5978,6 @@ window._renderizarAlertasEstoque = function() {
     }
 
     var h = '<div style="margin-top:4px">';
-    if (alertasInsumos.length) {
-        h += '<div style="font-size:10px;font-weight:700;color:#991b1b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">⚠ Insumos com estoque crítico</div>';
-        alertasInsumos.forEach(function(i) {
-            var bg   = i.saldo <= 0 ? '#fef2f2' : '#fef3c7';
-            var bord = i.saldo <= 0 ? '#fca5a5' : '#fde68a';
-            var cor  = i.saldo <= 0 ? '#991b1b' : '#92400e';
-            var badge= i.saldo < 0 ? '🔴 Déficit: ' + i.saldo.toFixed(2) + ' ' + (i.unidade||'') : (i.saldo === 0 ? '🔴 Zerado' : '🟡 ' + i.saldo.toFixed(2) + ' ' + (i.unidade||''));
-            h += '<div style="display:flex;justify-content:space-between;align-items:center;background:' + bg + ';border:1px solid ' + bord + ';border-radius:9px;padding:8px 12px;margin-bottom:6px">'
-                + '<div><div style="font-weight:700;font-size:12px;color:#2c1810">' + R8.esc(i.descricao) + '</div>'
-                + '<div style="font-size:10px;color:#888">' + R8.esc(i.codigo) + ' · ' + R8.esc(i.tipo) + '</div></div>'
-                + '<span style="font-size:11px;font-weight:700;color:' + cor + ';white-space:nowrap">' + badge + '</span>'
-                + '</div>';
-        });
-    }
     if (alertasProd.length) {
         h += '<div style="font-size:10px;font-weight:700;color:#92400e;text-transform:uppercase;letter-spacing:0.5px;margin-top:8px;margin-bottom:6px">⚠ Produtos acabados com alerta</div>';
         alertasProd.forEach(function(p) {
@@ -7168,44 +7148,6 @@ window.renderDashboard = function() {
     h += _dashKpi('Ferm. Travadas', stuckLotes, stuckLotes>0?'#ef4444':'#10b981', 'fa-exclamation-circle', stuckLotes>0?'⚠️ Verificar!':'OK');
     h += _dashKpi('Análises Sens.', (dadosERP.analisesSensoriais||[]).length, '#c49a2b', 'fa-star', 'Degustações');
     h += '</div>';
-
-    // Detalhe dos alertas — nome de cada insumo, não só a contagem, para
-    // saber exatamente o que precisa de ação sem ter que abrir o Estoque.
-    var _codigosVistosDetalhe = {};
-    var itensAtencao = [];
-    insumos.forEach(function(i){
-        if (_codigosVistosDetalhe[i.codigo]) return;
-        _codigosVistosDetalhe[i.codigo] = true;
-        var saldo = _r8SaldoAgrupadoInsumo(i.codigo);
-        if (saldo < 5) {
-            itensAtencao.push({
-                texto: (i.descricao || i.codigo) + ' — saldo: ' + saldo.toFixed(1) + (i.unidade||''),
-                urgente: saldo <= 0
-            });
-        }
-    });
-    insumos.forEach(function(i){
-        if (!i.validade) return;
-        var d = new Date(i.validade+'T00:00:00');
-        if (d > em7) return;
-        itensAtencao.push({
-            texto: (i.descricao || i.codigo) + ' — validade: ' + formatarData(i.validade),
-            urgente: d < hoje
-        });
-    });
-    if (itensAtencao.length) {
-        h += '<div style="font-size:10px;font-weight:700;color:#6b5b4e;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">📋 Itens que precisam de atenção</div>';
-        h += '<div style="background:#fff;border:1.5px solid #c49a2b;border-radius:12px;padding:10px 12px;margin-bottom:16px">';
-        itensAtencao.slice(0,8).forEach(function(item){
-            h += '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12px;color:#2c1810;border-bottom:1px solid #f1e6d0">'
-               + '<i class="fas fa-circle" style="font-size:6px;color:'+(item.urgente?'#ef4444':'#d97706')+'"></i>'
-               + R8.esc(item.texto) + '</div>';
-        });
-        if (itensAtencao.length > 8) {
-            h += '<div style="font-size:11px;color:#888;padding-top:6px">+ '+(itensAtencao.length-8)+' outro(s) item(ns)</div>';
-        }
-        h += '</div>';
-    }
 
     // Atalhos rápidos
     h += '<div style="font-size:10px;font-weight:700;color:#6b5b4e;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">🔗 Atalhos Rápidos</div>';
@@ -9916,6 +9858,7 @@ function _executarBaixaEGravarFicha(ficha, linhasBaixa, alertasBaixo) {
             unidade: insRef.unidade || '',
             lote: ficha.lote,
             origem: 'Ficha Técnica',
+            valorUnit: _r8CustoMedioInsumo(l.cod),
             saldoAnterior: saldoAntes,
             saldoAtual: saldoAntes - l.qtdNecessaria
         });
@@ -12822,6 +12765,20 @@ function _totalVolumeEnvaseFicha(f) {
     return parseFloat(f.envaseVolume || 0);
 }
 
+function _r8CustoMedioInsumo(codigo) {
+    // Custo unitário médio ponderado pelas entradas do Cadastro de Insumos.
+    // Substitui o uso do primeiro registro (.find) que valorizava todos os
+    // lotes pelo preço da primeira compra. Não altera saldo nem movimentações.
+    var qtdTot = 0, valTot = 0, primeiro = null;
+    (dadosERP.insumos || []).forEach(function(i) {
+        if (i.codigo !== codigo) return;
+        if (primeiro === null) primeiro = i.valor || 0;
+        var q = parseFloat(i.qtd) || 0, v = parseFloat(i.valor) || 0;
+        if (q > 0) { qtdTot += q; valTot += q * v; }
+    });
+    if (qtdTot > 0) return valTot / qtdTot;
+    return primeiro || 0;
+}
 function _calcularCustoLote(lote) {
     // Inclui a baixa original E qualquer baixa adicional lançada em edições
     // posteriores da Ficha Técnica ('Ficha Técnica (edição)') — antes este
@@ -12836,7 +12793,9 @@ function _calcularCustoLote(lote) {
     var totalCusto = 0;
     movs.forEach(function(m) {
         var ins = dadosERP.insumos.find(function(i){ return i.codigo === m.codigo; });
-        var valorUnit = ins ? (ins.valor || 0) : 0;
+        // Preço gravado no momento da baixa (snapshot); lançamentos antigos
+        // sem snapshot usam o custo médio ponderado do código.
+        var valorUnit = (m.valorUnit != null) ? parseFloat(m.valorUnit) || 0 : _r8CustoMedioInsumo(m.codigo);
         var custo = m.quantidade * valorUnit;
         totalCusto += custo;
         itens.push({
@@ -17617,8 +17576,55 @@ _r8ProtegerContraDuploClique('salvarEquipamentoERP', 'atualizarListaEquipamentos
 // DASHBOARD: Novos KPIs adicionais ───────────────────────────────────────
 // Patch renderDashboard para adicionar análise sensorial e eficiência média
 var _origRenderDashboard = window.renderDashboard;
+// ── "Fazer agora": faixa de ações no topo do Dashboard (só leitura) ──────
+// Usa apenas dados já existentes: insumos vencidos/vencendo e saldo negativo.
+// Não altera nenhum cálculo nem registro; só mostra o que pede ação.
+window._r8HtmlFazerAgora = function() {
+    var hoje = new Date(); hoje.setHours(0,0,0,0);
+    var em30 = new Date(hoje.getTime() + 30*86400000);
+    var insumos = dadosERP.insumos || [];
+    var vencidos = [], vencendo = [];
+    insumos.forEach(function(i){
+        if (!i.validade) return;
+        var d = new Date(i.validade + 'T00:00:00');
+        if (d < hoje) vencidos.push(i);
+        else if (d <= em30) vencendo.push(i);
+    });
+    var codigos = {};
+    insumos.forEach(function(i){ codigos[i.codigo] = true; });
+    var deficit = [];
+    Object.keys(codigos).forEach(function(cod){
+        var saldo = _r8SaldoAgrupadoInsumo(cod);
+        if (saldo < 0) {
+            var ref = insumos.find(function(i){ return i.codigo === cod; });
+            deficit.push({codigo: cod, descricao: ref ? ref.descricao : cod, saldo: saldo});
+        }
+    });
+    var itens = [];
+    if (deficit.length) itens.push({cor:'#ef4444', icone:'fa-triangle-exclamation', texto: deficit.length + ' insumo(s) com saldo negativo', tela:'telaEstoqueInsumos', ver:'Ver estoque'});
+    if (vencidos.length) itens.push({cor:'#ef4444', icone:'fa-calendar-xmark', texto: vencidos.length + ' insumo(s) vencido(s)', tela:'telaEstoqueInsumos', ver:'Ver estoque'});
+    if (vencendo.length) itens.push({cor:'#f59e0b', icone:'fa-hourglass-half', texto: vencendo.length + ' insumo(s) vencem em até 30 dias', tela:'telaEstoqueInsumos', ver:'Ver estoque'});
+    if (!itens.length) {
+        return '<div style="display:flex;align-items:center;gap:8px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:10px;padding:10px 12px;margin-bottom:14px;font-size:13px;color:#065f46"><i class="fas fa-circle-check"></i> Nada pendente agora nos insumos.</div>';
+    }
+    var h = '<div style="background:#fffbf3;border:1px solid #e7d9bf;border-radius:12px;padding:12px 14px;margin-bottom:14px">';
+    h += '<div style="font-size:11px;font-weight:800;letter-spacing:.6px;color:#8a6d3b;text-transform:uppercase;margin-bottom:8px">Fazer agora</div>';
+    itens.forEach(function(it){
+        h += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 0;border-top:1px solid #efe4d0">'
+           + '<div style="display:flex;align-items:center;gap:8px;font-size:13px;color:#2c1810"><i class="fas ' + it.icone + '" style="color:' + it.cor + '"></i> ' + R8.esc(it.texto) + '</div>'
+           + '<button onclick="irParaTelaERP(\'' + it.tela + '\')" style="background:none;border:1px solid #c49a2b;color:#8a6d3b;border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer">' + R8.esc(it.ver) + '</button>'
+           + '</div>';
+    });
+    h += '</div>';
+    return h;
+};
+
 window.renderDashboard = function() {
     _origRenderDashboard && _origRenderDashboard();
+    try {
+        var _elAgora = document.getElementById('dashboardConteudo');
+        if (_elAgora) _elAgora.insertAdjacentHTML('afterbegin', window._r8HtmlFazerAgora());
+    } catch(e) { R8.log.erro('dashboard:fazer-agora', e); }
     // Adicionar bloco de eficiência média e análise sensorial ao final
     var el = document.getElementById('dashboardConteudo');
     if (!el) return;
@@ -18211,7 +18217,7 @@ if(document.readyState === 'loading'){
     <div id="telaDashboard" class="tela">
         <div class="hdr">
             <div class="hdr-linha1">
-                <button class="btn-tela-voltar" onclick="irParaTelaERP('telaMenu')"><i class="fas fa-th"></i> Menu</button><h2>Dashboard</h2><button class="btn-tela-voltar" onclick="if(window.carregarDadosFirebase){carregarDadosFirebase();}else{renderDashboard();}" style="background:#c49a2b"><i class="fas fa-sync-alt"></i> Atualizar</button>
+                <button class="btn-tela-voltar" onclick="irParaTelaERP('telaMenu')" style="background:#ef4444;color:#fff;box-shadow:0 2px 8px rgba(239,68,68,.45)"><i class="fas fa-th"></i> Menu</button><h2>Dashboard</h2><button class="btn-tela-voltar" onclick="if(window.carregarDadosFirebase){carregarDadosFirebase();}else{renderDashboard();}" style="background:#c49a2b"><i class="fas fa-sync-alt"></i> Atualizar</button>
             </div>
         </div>
         <div id="dashboardConteudo"></div>
