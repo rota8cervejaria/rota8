@@ -26,7 +26,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-11-03-6';
+    window.R8_BUILD = '2026-11-03-7';
     // Data de hoje (AAAA-MM-DD) no horário LOCAL — toISOString() usa UTC e, depois das 21h no Brasil, devolvia amanhã.
     window._r8HojeISO = function() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); };
     (function() {
@@ -12281,19 +12281,18 @@ function atualizarTabelaProdutoAcabado(){
     });
 
     // KPI bar — contagem por LOTE (não mais por embalagem/barril individual)
-    var totalCamaraFria=0, nDisp=0, nBaixo=0, nEsgotado=0;
+    // Três cards: litros em TAPs, em PDVs e disponíveis na Câmara Fria
+    var totalCamaraFria=0, totalPdvKpi=0, totalTapKpi=0;
     lotesResumo.forEach(function(l){
         totalCamaraFria += l.totalCamaraFria;
-        if(l.status==='Disponível') nDisp++;
-        else if(l.status==='Baixo') nBaixo++;
-        else nEsgotado++;
+        totalPdvKpi     += l.totalPdv;
+        totalTapKpi     += l.totalTaps;
     });
-    var kCF=document.getElementById('kpiPACamaraFria'), kD=document.getElementById('kpiPADisponivel'),
-        kB=document.getElementById('kpiPABaixo'), kE=document.getElementById('kpiPAEsgotado');
-    if(kCF) kCF.textContent = totalCamaraFria.toFixed(1);
-    if(kD)  kD.textContent  = nDisp;
-    if(kB)  kB.textContent  = nBaixo;
-    if(kE)  kE.textContent  = nEsgotado;
+    var kTap=document.getElementById('kpiPATap'), kPdv=document.getElementById('kpiPAPdv'),
+        kCF=document.getElementById('kpiPACamaraFria');
+    if(kTap) kTap.textContent = (Math.round(totalTapKpi*10)/10).toFixed(1);
+    if(kPdv) kPdv.textContent = (Math.round(totalPdvKpi*10)/10).toFixed(1);
+    if(kCF)  kCF.textContent  = totalCamaraFria.toFixed(1);
     var c=document.getElementById('corpoTabelaProdutoAcabado');if(!c)return;
     if(!lotesResumo.length){
         c.innerHTML='<div class="card-item" style="text-align:center;padding:32px;color:#94a3b8"><i class="fas fa-beer" style="font-size:32px;display:block;margin-bottom:10px;color:#cbd5e1"></i>Nenhum produto acabado encontrado</div>';
@@ -18465,10 +18464,9 @@ if(document.readyState === 'loading'){
         </div>
         <!-- KPI bar -->
         <div class="estoque-kpi-bar" id="produtoAcabadoKpiBar">
-            <div class="estoque-kpi ok"><div class="estoque-kpi-valor" id="kpiPACamaraFria">—</div><div class="estoque-kpi-label">Total Câmara Fria (L)</div></div>
-            <div class="estoque-kpi ok"><div class="estoque-kpi-valor" id="kpiPADisponivel">—</div><div class="estoque-kpi-label">Disponível</div></div>
-            <div class="estoque-kpi warn"><div class="estoque-kpi-valor" id="kpiPABaixo">—</div><div class="estoque-kpi-label">Baixo</div></div>
-            <div class="estoque-kpi danger"><div class="estoque-kpi-valor" id="kpiPAEsgotado">—</div><div class="estoque-kpi-label">Esgotado</div></div>
+            <div class="estoque-kpi ok"><div class="estoque-kpi-valor" id="kpiPATap">—</div><div class="estoque-kpi-label">TAP (L)</div></div>
+            <div class="estoque-kpi ok"><div class="estoque-kpi-valor" id="kpiPAPdv">—</div><div class="estoque-kpi-label">PDV (L)</div></div>
+            <div class="estoque-kpi ok"><div class="estoque-kpi-valor" id="kpiPACamaraFria">—</div><div class="estoque-kpi-label">Câmara Fria (L)</div></div>
         </div>
         <!-- Saldo Atual -->
         <div style="font-weight:800;color:#2c1810;margin:14px 0 6px;font-size:14px"><i class="fas fa-layer-group" style="color:#c49a2b;margin-right:6px"></i>Saldo Atual</div>
