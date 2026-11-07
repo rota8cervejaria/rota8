@@ -26,7 +26,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-11-03-11';
+    window.R8_BUILD = '2026-11-03-12';
     // Data de hoje (AAAA-MM-DD) no horário LOCAL — toISOString() usa UTC e, depois das 21h no Brasil, devolvia amanhã.
     window._r8HojeISO = function() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); };
     (function() {
@@ -9465,7 +9465,29 @@ window._r8AlternarLegado = function(marcado) {
 };
 
 // SALVAR FICHA TÉCNICA
+// Diagnóstico: qualquer erro durante a gravação da ficha passa a aparecer na tela
+// (antes, uma exceção fazia o Gravar parar sem nenhuma mensagem).
 function salvarFichaTecnicaERP() {
+    try {
+        return _salvarFichaTecnicaERPInterno();
+    } catch (e) {
+        console.error('[R8] Erro ao gravar ficha:', e);
+        var motivo = (e && e.message) ? e.message : String(e);
+        var onde = (e && e.stack) ? (e.stack.split('\n')[1] || '').trim() : '';
+        try { if (R8.log && R8.log.erro) R8.log.erro('ficha:gravar', e); } catch (_) {}
+        if (window.confirmarAcao) {
+            confirmarAcao({
+                titulo: 'Não foi possível gravar a ficha',
+                msg: 'Erro: ' + motivo + (onde ? ' — ' + onde : '') + '. Tire um print desta tela e envie para o suporte.',
+                labelOk: 'Entendi',
+                onConfirm: function() {}
+            });
+        } else {
+            alert('Não foi possível gravar a ficha. Erro: ' + motivo);
+        }
+    }
+}
+function _salvarFichaTecnicaERPInterno() {
     let lote = document.getElementById('producaoLote')?.value.trim();
     let estilo = document.getElementById('producaoEstilo')?.value;
     if (!lote)   { R8.toast.aviso('Informe o número do lote.'); return; }
