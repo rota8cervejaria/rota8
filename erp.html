@@ -26,7 +26,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-11-03-19';
+    window.R8_BUILD = '2026-11-03-20';
     // Data de hoje (AAAA-MM-DD) no horário LOCAL — toISOString() usa UTC e, depois das 21h no Brasil, devolvia amanhã.
     window._r8HojeISO = function() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); };
     (function() {
@@ -9524,6 +9524,10 @@ function salvarFichaTecnicaERP() {
     }
 }
 function _salvarFichaTecnicaERPInterno() {
+    // Garante as coleções antes de qualquer leitura (dados zerados/importados podem não ter a chave)
+    ['insumos','sais','fichasTecnicas','movimentacoesEstoque','envases','produtosAcabados','barris','recebimentosBarris'].forEach(function(k){
+        if (!Array.isArray(dadosERP[k])) dadosERP[k] = [];
+    });
     let lote = document.getElementById('producaoLote')?.value.trim();
     let estilo = document.getElementById('producaoEstilo')?.value;
     if (!lote)   { R8.toast.aviso('Informe o número do lote.'); return; }
