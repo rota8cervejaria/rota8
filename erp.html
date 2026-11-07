@@ -26,7 +26,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-11-03-20';
+    window.R8_BUILD = '2026-11-03-21';
     // Data de hoje (AAAA-MM-DD) no horário LOCAL — toISOString() usa UTC e, depois das 21h no Brasil, devolvia amanhã.
     window._r8HojeISO = function() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); };
     (function() {
@@ -9432,7 +9432,10 @@ window._r8InsumoOcultoLegado = function(codigo, saldo) {
             .some(function(i){ return i && i.codigo === codigo && (parseFloat(i.quantidade != null ? i.quantidade : i.qtd) || 0) > 0; });
         if (usa) emNaoLegado = true;
     });
-    return emLegado && !emNaoLegado && (parseFloat(saldo) || 0) <= 0.0001;
+    if (emNaoLegado || (parseFloat(saldo) || 0) > 0.0001) return false;
+    if (emLegado) return true;
+    // Órfão: criado pela importação de receita legada (_bbAuto), zerado e não usado por nenhuma ficha
+    return (dadosERP.insumos || []).some(function(i){ return i.codigo === codigo && i._bbAuto; });
 };
 window._r8CodigosDeFicha = function(f) {
     var c = {};
