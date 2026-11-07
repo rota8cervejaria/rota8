@@ -26,7 +26,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-11-03-16';
+    window.R8_BUILD = '2026-11-03-17';
     // Data de hoje (AAAA-MM-DD) no horário LOCAL — toISOString() usa UTC e, depois das 21h no Brasil, devolvia amanhã.
     window._r8HojeISO = function() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); };
     (function() {
@@ -7666,6 +7666,9 @@ function salvarInsumoERP() {
     R8.limparValidacao(['insCodigo']);
     var cod = document.getElementById('insCodigo')?.value.trim();
     if (!R8.validar([{id:'insCodigo', label:'Código', obrigatorio:true}])) return;
+    // Rastreabilidade: insumo precisa de lote e fornecedor (água não usa este formulário)
+    R8.limparValidacao(['insLote','insFornecedor']);
+    if (!R8.validar([{id:'insLote', label:'Lote', obrigatorio:true}, {id:'insFornecedor', label:'Fornecedor', obrigatorio:true}])) return;
     var descricaoInformada = document.getElementById('insDescricao')?.value || '';
     var idxAtual = editandoIdERP; // null se for cadastro novo
     var conflito = _r8DescricaoConflitanteInsumo(cod, descricaoInformada, idxAtual);
@@ -9192,6 +9195,12 @@ window.salvarEnvaseProducaoERP=function(){
     var vol=document.getElementById('producaoEnvaseVolume')?.value;
     if(!data){R8.toast.aviso('Informe a data.');return;}
     if(!tipo){R8.toast.aviso('Selecione a embalagem (Cadastro Embalagens p/ Envase).');return;}
+    // Barril que volta de descarte/venda e ainda não foi sanitizado não pode ser enchido
+    var _barEnv=embCodigo?(dadosERP.barris||[]).find(function(b){return b.codigo===embCodigo;}):null;
+    if(_barEnv && _barEnv.status==='Aguardando Sanitização'){
+        R8.toast.erro('Barril '+embCodigo+' está Aguardando Sanitização. Sanitize e libere o barril antes de encher.',6000);
+        return;
+    }
     var loteAtual=document.getElementById('producaoLote')?.value||'';
     var item={data:data,tipo:tipo,embalagemCodigo:embCodigo,embalagemDescricao:embDescricao,quantidade:qtd,volumeUnitario:volUnit,volume:vol};
     if(!window.envasesAdicionadosProducao) window.envasesAdicionadosProducao=[];
@@ -10972,6 +10981,15 @@ window.popularSelectEnvaseEmbalagem = function(incluirCodigoExtra){
     sel.innerHTML = opts.join('');
     if(valAtual!=='' && cache[parseInt(valAtual,10)]) sel.value = valAtual;
 };
+// Aviso de sanitização ao escolher o barril para envase (não bloqueia; o bloqueio é no Gravar)
+window._r8AvisoSanitBarril = function(cod) {
+    if (!cod) return;
+    var b = (dadosERP.barris || []).find(function(x){ return x.codigo === cod; });
+    if (!b) return;
+    if (b.status === 'Aguardando Sanitização') R8.toast.aviso('Barril ' + cod + ' AGUARDA SANITIZAÇÃO. Sanitize antes de encher.', 6000);
+    else if (b.status === 'Em Uso') R8.toast.aviso('Barril ' + cod + ' está em uso no lote ' + (b.loteAtual || '—') + '.', 6000);
+    else R8.toast.info('Barril ' + cod + ' disponível. Confirme que foi sanitizado antes de encher.', 5000);
+};
 window._onEnvaseEmbalagemChange = function(){
     var sel = document.getElementById('producaoEnvaseEmbalagemSelect');
     if(!sel) return;
@@ -10984,6 +11002,7 @@ window._onEnvaseEmbalagemChange = function(){
         if(elTipo) elTipo.value = c.categoria;
         if(elCod)  elCod.value  = c.codigo;
         if(elDesc) elDesc.value = c.descricao;
+        window._r8AvisoSanitBarril(c.codigo);
         var vu = document.getElementById('producaoEnvaseVolumeUnitario');
         if(vu && !vu.value){
             var num = parseFloat(String(c.capacidade).replace(',','.'));
