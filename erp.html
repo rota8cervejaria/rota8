@@ -26,7 +26,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-11-03-12';
+    window.R8_BUILD = '2026-11-03-14';
     // Data de hoje (AAAA-MM-DD) no horário LOCAL — toISOString() usa UTC e, depois das 21h no Brasil, devolvia amanhã.
     window._r8HojeISO = function() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); };
     (function() {
@@ -4873,6 +4873,7 @@ window.confirmarBaixaInsumo = function() {
         unidade: i.unidade,
         origem: 'Descarte - ' + motivo,
         obs: obs,
+        valorUnit: _r8CustoMedioInsumo(cod), // custo no momento do descarte (perda valorizada)
         saldoAnterior: saldoAntes,
         saldoAtual: parseFloat((saldoAntes - qtd).toFixed(2))
     });
@@ -5037,6 +5038,13 @@ window._r8IrParaBaixaProduto = function(chave) {
     irParaTelaERP('telaBaixaEstoque');
     setTimeout(function(){ _mudarAbaBaixaEstoque('produto'); _r8PopularSelectBaixaProduto(chave); }, 60);
 };
+// Custo por litro do lote (insumos + rateio de energia/água/gás) ÷ litros do lote
+function _r8CustoLitroLote(lote) {
+    var vol = (dadosERP.produtosAcabados || []).filter(function(p){ return p.lote === lote; })
+        .reduce(function(a,p){ return a + (parseFloat(p.quantidade) || 0); }, 0);
+    if (!vol) return 0;
+    return _calcularCustoLote(lote).custoTotal / vol;
+}
 window.confirmarBaixaProdutoAcabado = function() {
     var chave = document.getElementById('baixaProdutoLote')?.value;
     var qtd = parseFloat(document.getElementById('baixaProdutoQtd')?.value);
@@ -5065,6 +5073,7 @@ window.confirmarBaixaProdutoAcabado = function() {
         origem: 'Descarte - ' + motivo,
         destino: 'Descarte',
         obs: obs,
+        valorUnit: _r8CustoLitroLote(lote), // custo/L do lote no momento do descarte
         saldoAnterior: saldoAntes,
         saldoAtual: p.camaraFria
     });
@@ -9540,7 +9549,8 @@ function _salvarFichaTecnicaERPInterno() {
         receitaNome: window._receitaPDFNome   || (editandoFichaIdx !== null && dadosERP.fichasTecnicas[editandoFichaIdx]?.receitaNome) || '',
         receitaXML:     window._r8ReceitaXMLTexto || (editandoFichaIdx !== null && dadosERP.fichasTecnicas[editandoFichaIdx]?.receitaXML) || '',
         receitaXMLNome: window._r8ReceitaXMLNome  || (editandoFichaIdx !== null && dadosERP.fichasTecnicas[editandoFichaIdx]?.receitaXMLNome) || '',
-        receitaBB:      window._bbEstadoJSON      || (editandoFichaIdx !== null && dadosERP.fichasTecnicas[editandoFichaIdx]?.receitaBB) || ''
+        receitaBB:      window._bbEstadoJSON      || (editandoFichaIdx !== null && dadosERP.fichasTecnicas[editandoFichaIdx]?.receitaBB) || '',
+        perdasEnvase:   (editandoFichaIdx !== null && dadosERP.fichasTecnicas[editandoFichaIdx]?.perdasEnvase) || []
     };
 
     // Revisão da ficha: pendências importantes pedem confirmação; as demais só avisam
@@ -9556,6 +9566,14 @@ function _salvarFichaTecnicaERPInterno() {
         }
     }
     if (ficha.legado) window._r8PurgarRastroLegado([ficha.lote], ficha); // lote legado: nenhum rastro em Insumos/Sais
+    // Finalização: o saldo do tanque precisa estar envasado ou registrado como perda
+    if (!ficha.legado && ficha.statusLote === 'finalizado') {
+        var saldoFin = _r8SaldoTanqueFicha(ficha);
+        if (saldoFin > 0.05) {
+            R8.toast.aviso('Não é possível finalizar: ainda há ' + saldoFin.toFixed(2) + ' L no tanque. Envase o restante ou registre a perda com motivo.', 6000);
+            return;
+        }
+    }
     // Lote já produzido (status Envase/Finalizado) gravado sem "Lote legado":
     // pede confirmação para não baixar insumos que já foram consumidos.
     if (!ficha.legado && (ficha.statusLote === 'envase' || ficha.statusLote === 'finalizado')) {
@@ -10254,6 +10272,7 @@ window.excluirFichaERP=function(i){
     }});
 };
 window.editarFichaERP=function(idx){
+    setTimeout(function(){ if (window._r8AtualizarSaldoTanque) window._r8AtualizarSaldoTanque(); }, 300);
     let f=dadosERP.fichasTecnicas[idx];if(!f){R8.toast.erro('Ficha não encontrada.');return;}
     editandoFichaIdx=idx;
     irParaTelaERP('telaProcessoProducao');
@@ -12802,6 +12821,53 @@ function _totalVolumeEnvaseFicha(f) {
     return parseFloat(f.envaseVolume || 0);
 }
 
+// ── Saldo do tanque e perda de envase ───────────────────────────────────
+// Saldo = volume da ficha − envasado − perdas registradas. Só a Finalização
+// exige saldo zerado ou perda registrada com motivo.
+function _r8SaldoTanqueFicha(f) {
+    if (!f) return 0;
+    var vol = parseFloat(f.volume) || 0;
+    var envasado = _totalVolumeEnvaseFicha(f);
+    var perdas = (f.perdasEnvase || []).reduce(function(a, p){ return a + (parseFloat(p.litros) || 0); }, 0);
+    return Math.round((vol - envasado - perdas) * 100) / 100;
+}
+window._r8RenderPerdasEnvase = function() {
+    var el = document.getElementById('listaPerdaEnvase');
+    if (!el) return;
+    var f = (editandoFichaIdx !== null) ? dadosERP.fichasTecnicas[editandoFichaIdx] : null;
+    var lista = (f && f.perdasEnvase) || [];
+    el.innerHTML = lista.length ? lista.map(function(p){
+        return '<div style="font-size:12px;color:#57534e;padding:4px 0;border-top:1px solid #fde68a">'
+            + R8.esc(p.data) + ' — <b>' + p.litros + ' L</b> — ' + R8.esc(p.motivo) + (p.obs ? ' (' + R8.esc(p.obs) + ')' : '') + '</div>';
+    }).join('') : '<div style="font-size:12px;color:#a8a29e">Nenhuma perda registrada.</div>';
+};
+window._r8AtualizarSaldoTanque = function() {
+    var el = document.getElementById('perdaEnvaseSaldo');
+    if (!el) return;
+    if (editandoFichaIdx === null) { el.textContent = 'Saldo no tanque: grave a ficha para ver o saldo.'; return; }
+    var f = dadosERP.fichasTecnicas[editandoFichaIdx];
+    var saldo = _r8SaldoTanqueFicha(f);
+    el.textContent = 'Saldo no tanque: ' + saldo.toFixed(2) + ' L' + (saldo > 0.05 ? ' (ainda não envasado nem perdido)' : ' (zerado)');
+    window._r8RenderPerdasEnvase();
+};
+window._r8RegistrarPerdaEnvase = function() {
+    if (editandoFichaIdx === null) { R8.toast.aviso('Grave a ficha antes de registrar a perda.'); return; }
+    var litros = parseFloat(document.getElementById('perdaEnvaseLitros')?.value);
+    var motivo = document.getElementById('perdaEnvaseMotivo')?.value || 'Outro';
+    var obs = (document.getElementById('perdaEnvaseObs')?.value || '').trim();
+    if (!(litros > 0)) { R8.toast.aviso('Informe os litros perdidos.'); return; }
+    var f = dadosERP.fichasTecnicas[editandoFichaIdx];
+    var saldo = _r8SaldoTanqueFicha(f);
+    if (litros > saldo + 0.05) { R8.toast.erro('A perda (' + litros + ' L) é maior que o saldo no tanque (' + saldo.toFixed(2) + ' L).'); return; }
+    if (!f.perdasEnvase) f.perdasEnvase = [];
+    f.perdasEnvase.push({ id: Date.now() + '_perda', data: obterDataHora(), litros: Math.round(litros * 100) / 100, motivo: motivo, obs: obs });
+    salvarDadosFirebase();
+    document.getElementById('perdaEnvaseLitros').value = '';
+    document.getElementById('perdaEnvaseObs').value = '';
+    R8.toast.ok('Perda registrada: ' + litros + ' L (' + motivo + ').');
+    window._r8AtualizarSaldoTanque();
+};
+
 function _r8CustoMedioInsumo(codigo) {
     // Custo unitário médio ponderado pelas entradas do Cadastro de Insumos.
     // Substitui o uso do primeiro registro (.find) que valorizava todos os
@@ -13011,12 +13077,18 @@ window.renderDRE = function() {
     });
 
     // Custo de insumos consumidos no período (movimentações de ficha técnica)
+    // Datas de movimento vêm como "DD/MM/AA HH:MM": compara só a parte da data
+    function noIntervaloMov(data) { return noIntervalo(String(data||'').slice(0,8)); }
     var custoMovPeriodo = (dadosERP.movimentacoesEstoque||[])
-        .filter(function(m){ return m.tipo==='saida' && m.origem==='Ficha Técnica' && noIntervalo(m.data); })
+        .filter(function(m){ return m.tipo==='saida' && m.origem && m.origem.indexOf('Ficha Técnica')===0 && noIntervaloMov(m.data); })
         .reduce(function(a,m){
-            var ins = dadosERP.insumos.find(function(i){ return i.codigo===m.codigo; });
-            return a + (m.quantidade||0) * (ins ? (ins.valor||0) : 0);
+            var unit = (m.valorUnit != null) ? parseFloat(m.valorUnit) || 0 : _r8CustoMedioInsumo(m.codigo);
+            return a + (m.quantidade||0) * unit;
         }, 0);
+    // Perdas por descarte (insumos e produto acabado), valorizadas no momento do descarte
+    var perdasDescarte = (dadosERP.movimentacoesEstoque||[])
+        .filter(function(m){ return m.tipo==='saida' && m.origem && m.origem.indexOf('Descarte')===0 && noIntervaloMov(m.data); })
+        .reduce(function(a,m){ return a + (m.quantidade||0) * (parseFloat(m.valorUnit) || 0); }, 0);
 
     var receitaPDV = vendasPDV.reduce(function(a,v){ return a+(v.valorTotal||0); }, 0);
     var receitaTAP = vendasTAP.reduce(function(a,v){ return a+(v.valorTotal||0); }, 0);
@@ -13037,7 +13109,9 @@ window.renderDRE = function() {
         {label:'Receita TAP',           val: 'R$ '+receitaTAP.toFixed(2), tipo: receitaTAP>0?'positivo':'neutro'},
         {label:'Receita Total (=)',      val: 'R$ '+receitaTotal.toFixed(2), tipo:'total'},
         {label:'Custo de Insumos (-)',   val: 'R$ '+custoMovPeriodo.toFixed(2), tipo:'negativo'},
-        {label:'Margem Bruta (=)',       val: 'R$ '+margemBruta.toFixed(2)+(percMargem?' ('+percMargem+'%)':''), tipo: margemBruta>=0?'positivo':'negativo'}
+        {label:'Margem Bruta (=)',       val: 'R$ '+margemBruta.toFixed(2)+(percMargem?' ('+percMargem+'%)':''), tipo: margemBruta>=0?'positivo':'negativo'},
+        {label:'Perdas por descarte (-)', val: 'R$ '+perdasDescarte.toFixed(2), tipo:'negativo'},
+        {label:'Resultado após perdas (=)', val: 'R$ '+(margemBruta-perdasDescarte).toFixed(2), tipo: (margemBruta-perdasDescarte)>=0?'positivo':'negativo'}
     ];
 
     linhas.forEach(function(l){
@@ -18799,12 +18873,27 @@ if(document.readyState === 'loading'){
         <button class="btn-add-item" onclick="mostrarFormERP('formEnvaseProducao')"><i class="fas fa-plus-circle"></i> Adicionar Etapa de Envase</button>
         <div id="formEnvaseProducao" class="form-flutuante"><h3>Nova Etapa de Envase</h3><div class="linha-dupla"><div><label>Data Envase</label><input type="date" id="producaoEnvaseData"></div><div><label>Embalagem (Cadastro Embalagens p/ Envase)</label><select id="producaoEnvaseEmbalagemSelect" onchange="_onEnvaseEmbalagemChange()" onfocus="popularSelectEnvaseEmbalagem()" style="width:100%"><option value="">— Selecione —</option></select><input type="hidden" id="producaoEnvaseTipo"><input type="hidden" id="producaoEnvaseEmbCodigo"><input type="hidden" id="producaoEnvaseEmbDescricao"></div></div><div class="linha-dupla"><div><label>Quantidade</label><input type="number" id="producaoEnvaseQuantidade" oninput="calcularVolumeTotalEnvaseProducaoERP()" placeholder="-"></div><div><label>Vol. Unit. (L)</label><input type="number" step="0.1" id="producaoEnvaseVolumeUnitario" oninput="calcularVolumeTotalEnvaseProducaoERP()" placeholder="-"></div></div><div class="campo-linha"><label>Volume Total (L)</label><input type="text" id="producaoEnvaseVolume" readonly></div><button class="btn-salvar" onclick="salvarEnvaseProducaoERP()"><i class="fas fa-check-circle"></i> Salvar</button><button class="btn-cancelar" onclick="fecharFormERP('formEnvaseProducao')"><i class="fas fa-times-circle"></i> Cancelar</button></div>
         <div id="listaEnvaseProducao"></div>
+        <div class="secao">Perda do Envase (saldo do tanque)</div>
+        <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:10px;margin-bottom:10px">
+            <div id="perdaEnvaseSaldo" style="font-weight:800;font-size:14px;color:#92400e;margin-bottom:8px">Saldo no tanque: —</div>
+            <div class="campo-linha"><label>Litros perdidos</label><input type="number" id="perdaEnvaseLitros" step="0.1" min="0" placeholder="0,0"></div>
+            <div class="campo-linha"><label>Motivo</label><select id="perdaEnvaseMotivo">
+                <option value="Sedimento / fundo de tanque">Sedimento / fundo de tanque</option>
+                <option value="Amostras e análises">Amostras e análises</option>
+                <option value="Contaminação">Contaminação</option>
+                <option value="Derramamento / quebra">Derramamento / quebra</option>
+                <option value="Outro">Outro</option>
+            </select></div>
+            <div class="campo-linha"><label>Observação (opcional)</label><input type="text" id="perdaEnvaseObs" placeholder="Detalhes"></div>
+            <button type="button" class="btn-add-item" onclick="_r8RegistrarPerdaEnvase()"><i class="fas fa-plus-circle"></i> Registrar perda</button>
+            <div id="listaPerdaEnvase" style="margin-top:8px"></div>
+        </div>
 
 
         <div class="secao">Status do Lote</div>
         <div class="campo-linha">
             <label>Etapa Atual</label>
-            <select id="producaoStatusLote">
+            <select id="producaoStatusLote" onchange="window._r8AtualizarSaldoTanque && window._r8AtualizarSaldoTanque()">
                 <option value="planejamento">Planejamento</option>
                 <option value="producao">Produção</option>
                 <option value="fermentacao">Fermentação</option>
