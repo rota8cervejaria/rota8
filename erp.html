@@ -26,7 +26,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-11-03-21';
+    window.R8_BUILD = '2026-11-03-27';
     // Data de hoje (AAAA-MM-DD) no horário LOCAL — toISOString() usa UTC e, depois das 21h no Brasil, devolvia amanhã.
     window._r8HojeISO = function() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); };
     (function() {
@@ -1473,11 +1473,12 @@
         align-items: center;
         justify-content: center;
         width: 34px;
-        height: 34px;
+        height: 24px;
+        min-height: 24px;
         border: none;
-        border-radius: 9px;
+        border-radius: 6px;
         cursor: pointer;
-        font-size: 15px;
+        font-size: 12px;
         transition: background 0.18s, transform 0.12s, box-shadow 0.18s;
         -webkit-tap-highlight-color: transparent;
         touch-action: manipulation;
@@ -6239,7 +6240,7 @@ window.renderLotesAtivos = function() {
         }
         if (extras.length) html += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+extras.join('')+'</div>';
 
-        html += '<div style="border-top:1px solid #f0ebe3;padding-top:10px;display:flex;gap:8px;justify-content:flex-end">';
+        html += '<div style="border-top:1px solid #f0ebe3;margin-top:12px;padding-top:14px;display:flex;gap:12px;justify-content:flex-end">';
         html += '<button class="r8-btn-acao r8-btn-editar" onclick="editarFichaERP('+idxFicha+')" style="width:auto;padding:7px 14px;gap:6px;font-size:12px;font-weight:700;border:1px solid #c49a2b;"><i class="fas fa-pen"></i> Editar Ficha</button>';
         if (!etapas[5].ok) {
             html += '<button class="r8-btn-acao" onclick="irParaTelaERP(\'telaEnvase\')" style="width:auto;padding:7px 14px;gap:6px;font-size:12px;font-weight:700;background:#10b981;color:#fff;"><i class="fas fa-whiskey-glass"></i> Envasar</button>';
@@ -8541,7 +8542,24 @@ window._r8ConfirmarImportacaoNFe = function() {
 };
 
 function salvarEquipamentoERP(){if(!window._r8ExigirAdmin('Editar Cadastros é restrito a Administradores.'))return;R8.limparValidacao(['eqCodigo']);let cod=document.getElementById('eqCodigo')?.value.trim();if(!R8.validar([{id:'eqCodigo',label:'Código',obrigatorio:true}]))return;let obj={codigo:cod,descricao:document.getElementById('eqDescricao')?.value||'',tipo:document.getElementById('eqTipo')?.value,situacao:document.getElementById('eqSituacao')?.value,valor:R8.valorMoeda(document.getElementById('eqValor')),obs:document.getElementById('eqObs')?.value||''};obj.id=(editandoIdERP!==null&&dadosERP.equipamentos[editandoIdERP]&&dadosERP.equipamentos[editandoIdERP].id)?dadosERP.equipamentos[editandoIdERP].id:R8.novoId();let _ed=editandoIdERP!==null;if(editandoIdERP!==null)dadosERP.equipamentos[editandoIdERP]=obj;else dadosERP.equipamentos.push(obj);salvarDadosLocal();fecharFormERP('formEquipamento');atualizarListaEquipamentosERP();registrarAuditoria('Equipamento',_ed?'editar':'criar','Código: '+cod);editandoIdERP=null;R8.toast.ok('Equipamento salvo!');}
-function atualizarListaEquipamentosERP(){let c=document.getElementById('listaEquipamentosERP');if(c)c.innerHTML=dadosERP.equipamentos.length?dadosERP.equipamentos.map(function(e,i){return'<div class="item-lista" style="flex-wrap:wrap"><span style="flex:1 1 100%;min-width:0;white-space:normal;word-break:break-word"><span style="font-size:13px"><strong>'+R8.esc(e.codigo)+'</strong> — '+R8.esc(e.descricao)+'</span>'+(e.tipo?'<div style="margin-top:5px"><span style="font-size:12.5px;color:#fff;background:#2c1810;padding:2px 8px;border-radius:4px;display:inline-block">'+R8.esc(e.tipo)+'</span></div>':'')+'</span><div class="item-acoes" style="flex-shrink:0"><button class="r8-btn-acao r8-btn-qr" title="Gerar QR Code" onclick="gerarQREquipamento(\''+R8.esc(e.codigo).replace(/'/g,"\\'")+'\')"><i class="fas fa-qrcode"></i></button><button class="r8-btn-acao r8-btn-editar" title="Editar" onclick="editarEquipamentoERP('+i+')"><i class="fas fa-pen"></i></button><button class="r8-btn-acao r8-btn-excluir" title="Excluir" onclick="excluirEquipamentoERP('+i+')"><i class="fas fa-trash"></i></button></div></div>';}).join(''):'<div class="card-item">Nenhum equipamento</div>';}
+function atualizarListaEquipamentosERP(){
+  let c=document.getElementById('listaEquipamentosERP');
+  if(!c) return;
+  c.innerHTML = dadosERP.equipamentos.length ? dadosERP.equipamentos.map(function(e,i){
+    var codJs = R8.esc(e.codigo).replace(/'/g, "\\'");
+    var faixa = e.tipo
+      ? '<div style="margin-top:5px;display:flex;align-items:center;flex-wrap:wrap;gap:6px"><span style="font-size:12.5px;color:#fff;background:#2c1810;padding:0 8px;height:24px;line-height:24px;box-sizing:border-box;border-radius:4px;display:inline-block">' + R8.esc(e.tipo) + '</span>'
+        + '<button class="r8-btn-acao r8-btn-qr" title="Gerar QR Code" style="display:inline-flex;align-items:center;justify-content:center;height:24px;min-height:24px;width:auto;min-width:34px;padding:0 6px;box-sizing:border-box;font-size:12px;border-radius:6px" onclick="gerarQREquipamento(\'' + codJs + '\')"><i class="fas fa-qrcode"></i></button></div>'
+      : '<div style="margin-top:5px"><button class="r8-btn-acao r8-btn-qr" title="Gerar QR Code" style="display:inline-flex;align-items:center;justify-content:center;height:24px;min-height:24px;width:auto;min-width:34px;padding:0 6px;box-sizing:border-box;font-size:12px;border-radius:6px" onclick="gerarQREquipamento(\'' + codJs + '\')"><i class="fas fa-qrcode"></i></button></div>';
+    return '<div class="item-lista" style="flex-wrap:wrap">'
+      + '<span style="flex:1 1 100%;min-width:0;white-space:normal;word-break:break-word">'
+      + '<span style="font-size:13px"><strong>' + R8.esc(e.codigo) + '</strong> — ' + R8.esc(e.descricao) + '</span>'
+      + faixa
+      + '</span>'
+      + '<div class="item-acoes" style="flex-shrink:0"><button class="r8-btn-acao r8-btn-editar" title="Editar" onclick="editarEquipamentoERP(' + i + ')"><i class="fas fa-pen"></i></button><button class="r8-btn-acao r8-btn-excluir" title="Excluir" onclick="excluirEquipamentoERP(' + i + ')"><i class="fas fa-trash"></i></button></div>'
+      + '</div>';
+  }).join('') : '<div class="card-item">Nenhum equipamento</div>';
+}
 
 // Gera o QR Code de rastreabilidade de QUALQUER equipamento cadastrado —
 // aponta para a tela pública de Situação/Sanitização (?equipamento=CÓDIGO).
@@ -8833,9 +8851,9 @@ var _btnAcaoStyle = '';
 function _renderItemProducao(arr, containerId, bgColor, labelFn) {
     var c = document.getElementById(containerId); if(!c) return;
     c.innerHTML = arr.length ? arr.map(function(item, i) {
-        return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;background:'+bgColor+';border-radius:8px;margin-bottom:6px;font-size:13px">'
-            + '<span>'+labelFn(item)+'</span>'
-            + '<span style="flex-shrink:0;margin-left:8px">'
+        return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 10px;background:'+bgColor+';border-radius:8px;margin-bottom:12px;font-size:13px">'
+            + '<span style="flex:1;min-width:0;line-height:1.35;word-break:break-word;padding-right:4px">'+labelFn(item)+'</span>'
+            + '<span style="flex-shrink:0;display:flex;gap:8px;align-items:center">'
             + '<button class="r8-btn-acao r8-btn-editar" title="Editar" onclick="_editarItemProducao(\''+containerId+'\','+i+')"><i class="fas fa-pen"></i></button>'
             + '<button class="r8-btn-acao r8-btn-excluir" title="Excluir" onclick="_excluirItemProducao(\''+containerId+'\','+i+')"><i class="fas fa-trash"></i></button>'
             + '</span></div>';
@@ -11104,8 +11122,9 @@ window.atualizarListaBarrisERP = function() {
             : '✅ Disponível';
         var linhaTipoCapacidade = (b.tipo || b.capacidade)
             ? ('<div style="margin-top:5px;display:flex;align-items:center;flex-wrap:wrap;gap:6px">'
-                + (b.tipo ? '<span style="font-size:12.5px;color:#fff;background:#2c1810;padding:2px 8px;border-radius:4px;display:inline-block">' + R8.esc(b.tipo) + '</span>' : '')
+                + (b.tipo ? '<span style="font-size:12.5px;color:#fff;background:#2c1810;padding:0 8px;height:24px;line-height:24px;box-sizing:border-box;border-radius:4px;display:inline-block">' + R8.esc(b.tipo) + '</span>' : '')
                 + (b.capacidade ? '<span style="background:#fef3c7;border-radius:6px;white-space:nowrap;padding:2px 8px;font-size:11.5px;color:#92400e">' + R8.esc(b.capacidade) + '</span>' : '')
+                + '<button class="r8-btn-acao r8-btn-qr" title="Gerar QR Code" style="display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;margin-left:6px;height:24px;min-height:24px;width:auto;min-width:34px;padding:0 6px;box-sizing:border-box;font-size:12px;border-radius:6px" onclick="gerarQRBarril(\'' + R8.esc(b.codigo) + '\')"><i class="fas fa-qrcode"></i></button>'
                 + '</div>')
             : '';
         var obsHtml = b.observacoes
@@ -11124,7 +11143,6 @@ window.atualizarListaBarrisERP = function() {
             + (aguardando ? '<button class="r8-btn-acao" title="Registrar Sanitização deste barril" style="background:#0ea5e9;color:#fff" onclick="_irSanitizarBarril(\'' + R8.esc(b.codigo) + '\')"><i class="fas fa-pump-soap"></i></button>' : '')
             + '<button class="r8-btn-acao r8-btn-editar" title="Editar" onclick="editarBarrilERP(' + i + ')"><i class="fas fa-pen"></i></button>'
             + '<button class="r8-btn-acao r8-btn-excluir" title="Excluir" onclick="excluirBarrilERP(' + i + ')"><i class="fas fa-trash"></i></button>'
-            + '<button class="r8-btn-acao r8-btn-qr" title="Gerar QR Code" onclick="gerarQRBarril(\'' + R8.esc(b.codigo) + '\')"><i class="fas fa-qrcode"></i></button>'
             + '</div></div>';
     }).join('') : '<div class="card-item">Nenhum barril cadastrado</div>';
 };
