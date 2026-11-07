@@ -26,7 +26,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-11-03-7';
+    window.R8_BUILD = '2026-11-03-11';
     // Data de hoje (AAAA-MM-DD) no horário LOCAL — toISOString() usa UTC e, depois das 21h no Brasil, devolvia amanhã.
     window._r8HojeISO = function() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); };
     (function() {
@@ -9534,6 +9534,22 @@ function salvarFichaTecnicaERP() {
         }
     }
     if (ficha.legado) window._r8PurgarRastroLegado([ficha.lote], ficha); // lote legado: nenhum rastro em Insumos/Sais
+    // Lote já produzido (status Envase/Finalizado) gravado sem "Lote legado":
+    // pede confirmação para não baixar insumos que já foram consumidos.
+    if (!ficha.legado && (ficha.statusLote === 'envase' || ficha.statusLote === 'finalizado')) {
+        confirmarAcao({
+            titulo: 'Lote já produzido?',
+            msg: 'O status do lote é "' + (ficha.statusLote === 'envase' ? 'Envase' : 'Finalizado') + '". Lote já produzido não deve baixar insumos do estoque. Gravar como LEGADO? Nenhum insumo será baixado e, se for edição, as baixas anteriores serão estornadas.',
+            labelOk: 'Gravar como legado',
+            onConfirm: function() {
+                var cb = document.getElementById('producaoLegado');
+                if (cb) cb.checked = true;
+                if (typeof window._r8AlternarLegado === 'function') window._r8AlternarLegado(true);
+                salvarFichaTecnicaERP();
+            }
+        });
+        return;
+    }
 
     // ── EDIÇÃO: baixa/estorno de insumos pela DIFERENÇA em relação ao
     // que já havia sido baixado antes (evita baixar de novo o que já foi
@@ -12773,11 +12789,37 @@ function _r8CustoMedioInsumo(codigo) {
         if (i.codigo !== codigo) return;
         if (primeiro === null) primeiro = i.valor || 0;
         var q = parseFloat(i.qtd) || 0, v = parseFloat(i.valor) || 0;
-        if (q > 0) { qtdTot += q; valTot += q * v; }
+        // Só entradas com preço entram na média (estoque sem valor não derruba o custo)
+        if (q > 0 && v > 0) { qtdTot += q; valTot += q * v; }
     });
     if (qtdTot > 0) return valTot / qtdTot;
     return primeiro || 0;
 }
+// ── Rateio de energia, água e gás por lote (proporcional aos litros do mês) ──
+// Usa as despesas fixas do Financeiro cujo nome contenha energia/água/gás.
+// Mês da despesa: 0-based (igual ao restante do Financeiro).
+function _r8RegexRateioUtilidades(desc) {
+    return /energia|[aá]gua|g[aá]s|luz|fornecimento/i.test(desc || '');
+}
+function _r8RateioUtilidadesLote(ficha, volEnvasado) {
+    if (!ficha || !ficha.dataProducao) return {valor:0, pool:0, litrosMes:0};
+    var ano = parseInt(ficha.dataProducao.substr(0,4),10);
+    var mes = parseInt(ficha.dataProducao.substr(5,2),10) - 1;
+    var pool = (getDespesasFixas() || []).filter(function(d){
+        return d.ano === ano && d.mes === mes && _r8RegexRateioUtilidades(d.desc);
+    }).reduce(function(a,d){ return a + (parseFloat(d.valor) || 0); }, 0);
+    var litrosMes = 0;
+    (dadosERP.fichasTecnicas || []).forEach(function(f){
+        if (f.legado || !f.dataProducao) return;
+        if (parseInt(f.dataProducao.substr(0,4),10) !== ano) return;
+        if (parseInt(f.dataProducao.substr(5,2),10) - 1 !== mes) return;
+        var prod = (dadosERP.produtosAcabados || []).find(function(p){ return p.lote === f.lote; });
+        litrosMes += prod ? (prod.quantidade || 0) : _totalVolumeEnvaseFicha(f);
+    });
+    var valor = (pool > 0 && litrosMes > 0 && volEnvasado > 0) ? pool * (volEnvasado / litrosMes) : 0;
+    return {valor: valor, pool: pool, litrosMes: litrosMes};
+}
+
 function _calcularCustoLote(lote) {
     // Inclui a baixa original E qualquer baixa adicional lançada em edições
     // posteriores da Ficha Técnica ('Ficha Técnica (edição)') — antes este
@@ -12788,6 +12830,18 @@ function _calcularCustoLote(lote) {
     var movs = (dadosERP.movimentacoesEstoque||[]).filter(function(m){
         return m.lote === lote && m.tipo === 'saida' && m.origem && m.origem.indexOf('Ficha Técnica') === 0;
     });
+    // Lote legado sem nenhuma baixa no histórico: o custo sai da própria ficha
+    if (!movs.length) {
+        var fLeg = (dadosERP.fichasTecnicas || []).find(function(f){ return f.lote === lote; });
+        if (fLeg) {
+            var linhasLeg = [].concat(fLeg.insumos || [], fLeg.lupulos || [], fLeg.leveduras || []);
+            linhasLeg.forEach(function(i){
+                var q = parseFloat(i.quantidade != null ? i.quantidade : i.qtd) || 0;
+                if (!i.codigo || q <= 0) return;
+                movs.push({codigo: i.codigo, descricao: i.descricao || i.codigo, tipoInsumo: i.tipo || '', unidade: i.unidade || '', quantidade: q, lote: lote, tipo: 'saida', origem: 'Ficha Técnica (lote legado)'});
+            });
+        }
+    }
     var itens = [];
     var totalCusto = 0;
     movs.forEach(function(m) {
@@ -12804,7 +12858,11 @@ function _calcularCustoLote(lote) {
             valorUnit: valorUnit, custo: custo
         });
     });
-    return {itens: itens, totalCusto: totalCusto};
+    var ficha = (dadosERP.fichasTecnicas || []).find(function(f){ return f.lote === lote; });
+    var prodL = (dadosERP.produtosAcabados || []).find(function(p){ return p.lote === lote; });
+    var volL = prodL ? (prodL.quantidade || 0) : (ficha ? _totalVolumeEnvaseFicha(ficha) : 0);
+    var rat = _r8RateioUtilidadesLote(ficha, volL);
+    return {itens: itens, totalCusto: totalCusto, rateioUtilidades: rat.valor, rateioPool: rat.pool, rateioLitrosMes: rat.litrosMes, custoTotal: totalCusto + rat.valor};
 }
 
 function _popularSelectCustoLote() {
@@ -12842,7 +12900,8 @@ window.renderCustoPorLote = function() {
         + '<div class="custo-lote-titulo">🍺 Lote <strong>'+R8.esc(lote)+'</strong> — '+R8.esc(ficha.estilo)+'</div>'
         + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">'
         + _kpiMini('Custo Insumos', 'R$ '+c.totalCusto.toFixed(2), '#ef4444')
-        + _kpiMini('Custo/Litro',   'R$ '+custoPorLitro.toFixed(2), '#c49a2b')
+        + _kpiMini('Energia/Água/Gás', 'R$ '+c.rateioUtilidades.toFixed(2), '#0ea5e9')
+        + _kpiMini('Custo Total/Litro', 'R$ '+(volEnvasado>0?(c.custoTotal/volEnvasado):0).toFixed(2), '#c49a2b')
         + _kpiMini('Vol. Envasado',  volEnvasado.toFixed(1)+'L',    '#3b82f6')
         + _kpiMini('Litros Vendidos',litrosVendidos.toFixed(1)+'L', '#10b981')
         + _kpiMini('Vol. Câmara',   (prod ? (prod.camaraFria||0) : 0).toFixed(1)+'L', '#8b5cf6')
@@ -19873,7 +19932,7 @@ if(document.readyState === 'loading'){
   </button>
   <button class="nav-btn" id="nb-dre" onclick="navTo('dre')">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg>
-    Relat.
+    DRE
   </button>
   <button class="nav-btn" id="nb-orcamentos" onclick="navTo('orcamentos')">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/></svg>
