@@ -26,7 +26,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-11-03-18';
+    window.R8_BUILD = '2026-11-03-19';
     // Data de hoje (AAAA-MM-DD) no horário LOCAL — toISOString() usa UTC e, depois das 21h no Brasil, devolvia amanhã.
     window._r8HojeISO = function() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); };
     (function() {
@@ -9425,7 +9425,12 @@ window._r8InsumoOcultoLegado = function(codigo, saldo) {
     var emLegado = false, emNaoLegado = false;
     (dadosERP.fichasTecnicas || []).forEach(function(f) {
         var m = window._r8CodigosDeFicha(f);
-        if (m[codigo]) { if (f.legado) emLegado = true; else emNaoLegado = true; }
+        if (!m[codigo]) return;
+        if (f.legado) { emLegado = true; return; }
+        // Ficha não legada só conta se realmente usa o insumo (quantidade > 0)
+        var usa = [].concat(f.insumos || [], f.lupulos || [], f.leveduras || [], f.sais || [])
+            .some(function(i){ return i && i.codigo === codigo && (parseFloat(i.quantidade != null ? i.quantidade : i.qtd) || 0) > 0; });
+        if (usa) emNaoLegado = true;
     });
     return emLegado && !emNaoLegado && (parseFloat(saldo) || 0) <= 0.0001;
 };
