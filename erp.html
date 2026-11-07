@@ -26,7 +26,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-11-03-17';
+    window.R8_BUILD = '2026-11-03-18';
     // Data de hoje (AAAA-MM-DD) no horário LOCAL — toISOString() usa UTC e, depois das 21h no Brasil, devolvia amanhã.
     window._r8HojeISO = function() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); };
     (function() {
@@ -7768,6 +7768,7 @@ function atualizarListaInsumosERP() {
             (i.descricao && i.descricao.toLowerCase().includes(busca)) ||
             (i.fornecedor && i.fornecedor.toLowerCase().includes(busca));
         var matchTipo = !filtroTipo || i.tipo === filtroTipo;
+        if (window._r8InsumoOcultoLegado(i.codigo, window._r8SaldoAgrupadoInsumo(i.codigo))) return false;
         return matchBusca && matchTipo;
     });
 
@@ -9416,6 +9417,18 @@ window.revisarFichaERP = function() { window._r8MostrarRevisao(window._r8Revisar
 // Itens criados automaticamente pela importação da receita (_bbAuto, saldo 0,
 // sem movimentação) que só pertencem a lotes legados são retirados do cadastro.
 window._r8AutoLegadoStash = { insumos: [], sais: [] };
+// Insumo que só pertence a lote legado e está zerado: não listar no Cadastro nem no Estoque.
+// Não apaga dados; só tira da visualização. Se o insumo voltar a ter saldo ou for usado
+// em lote não legado, aparece normalmente.
+window._r8InsumoOcultoLegado = function(codigo, saldo) {
+    if (!codigo) return false;
+    var emLegado = false, emNaoLegado = false;
+    (dadosERP.fichasTecnicas || []).forEach(function(f) {
+        var m = window._r8CodigosDeFicha(f);
+        if (m[codigo]) { if (f.legado) emLegado = true; else emNaoLegado = true; }
+    });
+    return emLegado && !emNaoLegado && (parseFloat(saldo) || 0) <= 0.0001;
+};
 window._r8CodigosDeFicha = function(f) {
     var c = {};
     ['insumos', 'lupulos', 'leveduras'].forEach(function(k) { (f[k] || []).forEach(function(i) { if (i && i.codigo) c[i.codigo] = 1; }); });
@@ -12001,6 +12014,7 @@ function atualizarTabelaEstoqueAgrupada(){
         // Saldo = Entrada (Cadastro) − Saída (Produção) — mesmo cálculo em
         // toda a tela, sem depender de qual registro é "o" registro do código.
         var saldo = _r8SaldoAgrupadoInsumo(i.codigo);
+        if (window._r8InsumoOcultoLegado(i.codigo, saldo)) return;
         mapa.set(key, {codigo:i.codigo, descricao:i.descricao, tipo:i.tipo,
             qtdTotal: saldo, unidade: unidade, valorTotal: saldo * (i.valor||0)});
     });
