@@ -26,7 +26,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-11-03-27';
+    window.R8_BUILD = '2026-11-03-38';
     // Data de hoje (AAAA-MM-DD) no horário LOCAL — toISOString() usa UTC e, depois das 21h no Brasil, devolvia amanhã.
     window._r8HojeISO = function() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); };
     (function() {
@@ -560,6 +560,8 @@
             font-weight:600;font-size:13px;
             color:#1e293b;word-break:break-word;line-height:1.3}
         .card-sub small{font-size:10px;color:#64748b;margin-top:4px;display:block}
+        /* Teste: menu principal com ícone grande (sem círculo), textos e funções iguais */
+        #telaMenu .card-menu i{font-size:44px;margin-bottom:8px}
         .submenu-cards .card-sub{flex:1;min-width:110px}
         .menu-header{display:flex;flex-direction:column;align-items:center;margin-bottom:32px}
         .logo-img{height:56px;width:auto}
@@ -4066,6 +4068,36 @@ function _r8ModulosAlterados(base, atual) {
     return alterados;
 }
 
+// ── Backup diário no Firebase (erp/rota8cervejaria/backups/AAAA-MM-DD) ──────
+// Grava no máximo 1 vez por dia, no primeiro salvamento confirmado do dia.
+// Mantém os últimos 14 dias. Restauração é feita manualmente (não automática).
+function _r8ChaveDia(d) {
+    d = d || new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function _r8BackupDiarioSeNecessario(_db, payload) {
+    try {
+        var chave = _r8ChaveDia();
+        if (localStorage.getItem('r8_backup_dia') === chave) return;
+        var copia = JSON.parse(JSON.stringify(payload));
+        _db.ref('erp/rota8cervejaria/backups/' + chave).set({ geradoEm: Date.now(), dados: copia })
+            .then(function() {
+                try { localStorage.setItem('r8_backup_dia', chave); } catch(e) {}
+                _r8LimparBackupsAntigos(_db, 14);
+            })
+            .catch(function(e) { R8.log.erro('backup:diario', e); });
+    } catch(e) { R8.log.erro('backup:diario', e); }
+}
+function _r8LimparBackupsAntigos(_db, manter) {
+    _db.ref('erp/rota8cervejaria/backups').once('value').then(function(snap) {
+        var chaves = Object.keys(snap.val() || {}).sort();
+        var excesso = chaves.length - manter;
+        for (var i = 0; i < excesso; i++) {
+            _db.ref('erp/rota8cervejaria/backups/' + chaves[i]).remove();
+        }
+    }).catch(function(e) { R8.log.erro('backup:limpeza', e); });
+}
+
 function salvarDadosFirebase() {
     // 1. Sempre salvar no localStorage
     try {
@@ -4123,6 +4155,7 @@ function salvarDadosFirebase() {
                 // aqui também, sem esperar o próximo carregamento.
                 dadosERP = payload;
                 window._r8UltimoSnapshotServidor = JSON.parse(JSON.stringify(payload));
+                _r8BackupDiarioSeNecessario(_db, payload); // 1 backup por dia, no Firebase
                 try { localStorage.setItem('rota8_dados', JSON.stringify(dadosERP)); } catch(e){console.warn('[R8][cache apos gravar]', e);}
                 mostrarSync('sync-ok', '✓ Sincronizado');
                 try { localStorage.setItem('rota8_sync_pendente', 'false'); } catch(e){console.warn('[R8][sync_pendente=false apos gravar]', e);}
@@ -14347,6 +14380,91 @@ function _gerarPDFRastreioCompletoLote(f) {
     R8.toast.ok('Relatório de rastreabilidade completa gerado!');
 }
 
+
+// ── Restaurar backup diário (Admin). Grava um backup do estado atual antes. ──
+window._r8RestaurarBackup = function() {
+    if (!window._r8ExigirAdmin('Restaurar backup é restrito a Administradores.')) return;
+    var _db = window.db;
+    if (!_db || typeof _db.ref !== 'function') { R8.toast.erro('Firebase indisponível.'); return; }
+    _db.ref('erp/rota8cervejaria/backups').once('value').then(function(snap) {
+        var v = snap.val() || {};
+        var chaves = Object.keys(v).sort().reverse();
+        if (!chaves.length) { R8.toast.aviso('Nenhum backup encontrado.'); return; }
+        var data = window.prompt('Backups disponíveis (mais recentes primeiro):\n' + chaves.slice(0, 14).join('\n') + '\n\nDigite a data exata do backup (AAAA-MM-DD):');
+        if (!data) return;
+        if (!v[data]) { R8.toast.aviso('Data não encontrada: ' + data); return; }
+        confirmarAcao({
+            titulo: 'Restaurar backup de ' + data,
+            msg: 'Isso SUBSTITUI todos os dados atuais do ERP pelos do backup de ' + data + '. Lançamentos feitos depois dessa data serão perdidos. Antes, o estado atual será salvo em backup de segurança.',
+            labelOk: 'Continuar',
+            danger: true,
+            onConfirm: function() {
+                var confirmacao = window.prompt('Para confirmar, digite RESTAURAR (tudo em maiúsculas):');
+                if (confirmacao !== 'RESTAURAR') { R8.toast.aviso('Operação cancelada — texto de confirmação não conferiu.'); return; }
+                var atual = JSON.parse(JSON.stringify(dadosERP));
+                _db.ref('erp/rota8cervejaria/backups_restauracao/' + Date.now()).set({ geradoEm: Date.now(), dados: atual })
+                    .then(function() {
+                        var dados = JSON.parse(JSON.stringify(v[data].dados || {}));
+                        dados._syncTs = Date.now();
+                        return _db.ref('erp/rota8cervejaria/dados').set(dados).then(function() { return dados; });
+                    })
+                    .then(function(dados) {
+                        try { localStorage.setItem('rota8_dados', JSON.stringify(dados)); } catch(e) {}
+                        R8.toast.ok('Backup de ' + data + ' restaurado. Recarregando...');
+                        setTimeout(function() { location.reload(); }, 1500);
+                    })
+                    .catch(function(e) { R8.log.erro('backup:restaurar', e); R8.toast.erro('Falha ao restaurar: ' + (e.message || e)); });
+            }
+        });
+    }).catch(function(e) { R8.log.erro('backup:listar', e); R8.toast.erro('Não foi possível listar os backups.'); });
+};
+
+// ── Rastreio completo de um lote em PDF: insumos, envases, barris e destinos (clientes/PDV/TAP) ──
+window.gerarPDFRastreioLote = function(loteInformado) {
+    var lote = (loteInformado || window.prompt('Digite o número do lote (ex.: R8-APA2026-001):') || '').trim();
+    if (!lote) return;
+    var f = (dadosERP.fichasTecnicas || []).find(function(x){ return x.lote === lote; });
+    if (!f) { R8.toast.aviso('Lote não encontrado: ' + lote); return; }
+    var jsPDF = window.jspdf.jsPDF;
+    var doc = new jsPDF();
+    r8pdfCabecalho(doc, 'Rastreio do Lote', lote + ' · ' + (f.estilo || ''));
+    var yAt = 56;
+    function secao(titulo, head, body) {
+        if (!body.length) body = [['—'].concat(head.slice(1).map(function(){ return ''; }))];
+        doc.setFontSize(11);
+        doc.text(titulo, 14, yAt);
+        r8pdfAutoTable(doc, { head: [head], body: body, startY: yAt + 3 });
+        yAt = ((doc.lastAutoTable && doc.lastAutoTable.finalY) || yAt) + 10;
+    }
+    secao('Dados da produção', ['Campo', 'Valor'], [
+        ['Data de produção', formatarData(f.dataProducao)],
+        ['Tanque', f.tanque || '—'],
+        ['Responsável', f.responsavel || '—'],
+        ['Volume (L)', String(f.volume || '—')],
+        ['Status', f.statusLote || '—'],
+        ['Lote legado (já produzido)', f.legado ? 'Sim' : 'Não']
+    ]);
+    secao('Insumos (maltes, adjuntos e sais)', ['Código', 'Descrição', 'Quantidade', 'Momento', 'Lote de compra'],
+        (f.insumos || []).map(function(i){ return [i.codigo, i.descricao || '', (i.quantidade || '') + ' ' + (i.unidade || ''), i.momento || '—', i.lote || 'não registrado']; }));
+    secao('Lúpulos', ['Código', 'Descrição', 'Quantidade', 'Safra', 'Produtor'],
+        (f.lupulos || []).map(function(l){ return [l.codigo, l.descricao || '', (l.quantidade || '') + ' ' + (l.unidade || ''), l.safra || '—', l.produtorBB || '—']; }));
+    secao('Envases da ficha', ['Data', 'Embalagem', 'Quantidade', 'Volume (L)'],
+        (f.envases || []).map(function(e){ return [formatarData(e.data), e.embalagemCodigo || '—', String(e.quantidade || ''), String(e.volume || '')]; }));
+    secao('Barris com este lote', ['Barril', 'Descrição', 'Status'],
+        (dadosERP.barris || []).filter(function(b){ return b.loteAtual === lote; })
+            .map(function(b){ return [b.codigo, b.descricao || '', b.status || '—']; }));
+    var destinos = [].concat(
+        (dadosERP.vendasPDV || []).filter(function(v){ return v.lote === lote; })
+            .map(function(v){ return [formatarData(v.data), 'PDV', v.destino || '—', v.embalagemCodigo || '—', (v.quantidade || '') + ' L']; }),
+        (dadosERP.vendasTaps || []).filter(function(v){ return v.lote === lote; })
+            .map(function(v){ return [formatarData(v.data), 'TAP Brewpub', v.destino || 'TAPs', v.embalagemCodigo || '—', (v.quantidade || '') + ' L']; })
+    );
+    secao('Destinos (vendas PDV e transferências TAP)', ['Data', 'Canal', 'Destino / cliente', 'Barril', 'Quantidade'], destinos);
+    doc.setFontSize(8);
+    doc.text('Lote de compra dos insumos: quando aparece "não registrado", a ficha não guardou o lote de compra desse item.', 14, Math.min(yAt, 285));
+    r8pdfRodape(doc);
+    doc.save('rastreio_' + lote + '.pdf');
+};
 window.gerarPDFRastreabilidadeVendas=function(){const{jsPDF}=window.jspdf;const doc=new jsPDF();r8pdfCabecalho(doc,'Rastreabilidade de Vendas','Consolidado PDV + TAPs');let vendas=[...(dadosERP.vendasPDV||[]).map(function(v){return{...v,destino:v.destino};}), ...(dadosERP.vendasTaps||[]).map(function(v){return{...v,destino:'TAPs Brewpub'};})];let linhas=vendas.map(function(v){return[formatarData(v.data),v.lote,v.estilo,(v.tipoEmbalagem||'—')+((v.embalagemCodigoUnidade||v.embalagemCodigo)?' ['+(v.embalagemCodigoUnidade||v.embalagemCodigo)+']':''),v.quantidade+' L',v.destino];});r8pdfAutoTable(doc,{head:[['Data','Lote','Estilo','Embalagem','Qtd','Destino']],body:linhas,startY:58});r8pdfRodape(doc);doc.save('rastreabilidade_'+obterData()+'.pdf');};
 window.gerarPDFFichasArquivadas=function(){const{jsPDF}=window.jspdf;const doc=new jsPDF();const periodo=window._r8RelPeriodo();const fichas=window._r8FiltrarPorPeriodo(dadosERP.fichasTecnicas,'dataProducao',periodo);r8pdfCabecalho(doc,'Fichas Técnicas Arquivadas',window._r8PeriodoSubtitulo(periodo,'Histórico de produções'));let linhas=fichas.map(function(f){return[f.lote,f.estilo,formatarData(f.dataProducao),(f.volume||'-')+' L',f.responsavel||'-',f.og||'-',f.fg||'-',(f.abv||'-')+'%'];});r8pdfAutoTable(doc,{head:[['Lote','Estilo','Data','Volume','Resp.','OG','FG','ABV']],body:linhas,startY:58});r8pdfRodape(doc);doc.save('fichas_'+obterData()+'.pdf');};
 window.gerarPDFERP=function(tipo){if(tipo==='custos'){const{jsPDF}=window.jspdf;const doc=new jsPDF();r8pdfCabecalho(doc,'Relatório de Custos','Análise de custos do estoque');let total=dadosERP.insumos.reduce(function(acc,i){return acc+(i.valorTotal||0);},0);doc.setFontSize(10);doc.setTextColor(44,24,16);doc.setFont('helvetica','bold');doc.text('Custo Total: R$ '+total.toFixed(2),14,52);let tipos={};dadosERP.insumos.forEach(function(i){tipos[i.tipo]=(tipos[i.tipo]||0)+(i.valorTotal||0);});let linhas=Object.entries(tipos).map(function(e){return[e[0],'R$ '+e[1].toFixed(2)];});r8pdfAutoTable(doc,{head:[['Tipo','Valor Total']],body:linhas,startY:58});r8pdfRodape(doc);doc.save('custos_'+obterData()+'.pdf');}};
@@ -18726,6 +18844,7 @@ if(document.readyState === 'loading'){
         <button type="button" onclick="var p=document.getElementById('paFerramentasAvancadas');var seta=document.getElementById('paFerramentasSeta');var aberto=p.style.display==='block';p.style.display=aberto?'none':'block';seta.style.transform=aberto?'rotate(0deg)':'rotate(180deg)';" style="width:100%;margin:0 0 8px;padding:10px;background:#f5f2ec;border:1.5px solid #e0d8ce;color:#6b5f4f;border-radius:9px;font-size:12.5px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px"><i class="fas fa-toolbox"></i> Ferramentas Avançadas <i id="paFerramentasSeta" class="fas fa-chevron-down" style="transition:transform .2s"></i></button>
         <div id="paFerramentasAvancadas" style="display:none">
             <button type="button" onclick="_diagnosticarLoteProdutoAcabado()" style="width:100%;margin:0 0 8px;padding:10px;background:#eff6ff;border:1.5px solid #93c5fd;color:#1d4ed8;border-radius:9px;font-size:12.5px;font-weight:700;cursor:pointer" title="Mostra todas as fichas técnicas de um lote, os envases de cada uma, e os registros de Estoque — sem alterar nada"><i class="fas fa-search"></i> Diagnosticar Lote (não altera nada)</button>
+            <button type="button" onclick="_r8RestaurarBackup()" style="width:100%;margin:0 0 8px;padding:10px;background:#ede9fe;border:1.5px solid #7c3aed;color:#5b21b6;border-radius:9px;font-size:12.5px;font-weight:700;cursor:pointer">🛟 Restaurar backup do Firebase (Admin)</button>
             <button type="button" onclick="_confirmarResetPosProducao()" style="width:100%;margin:0 0 8px;padding:10px;background:#fee2e2;border:1.5px solid #ef4444;color:#991b1b;border-radius:9px;font-size:12.5px;font-weight:700;cursor:pointer" title="Ação restrita a Administradores — apaga e reconstrói Estoque de Produto Acabado e Vendas PDV/TAP a partir do Envase"><i class="fas fa-broom"></i> Reconstruir Estoque + Vendas (a partir do Envase)</button>
         </div>
         <!-- KPI bar -->
@@ -19076,7 +19195,7 @@ if(document.readyState === 'loading'){
     </div>
 
     <div id="telaRastreabilidade" class="tela">
-        <div class="hdr"><div class="hdr-linha1"><button class="btn-tela-voltar" onclick="irParaTelaERP('telaMenu')"><i class="fas fa-arrow-left"></i> Voltar</button><h2>Rastreabilidade</h2></div><div class="hdr-acoes"><button class="btn-tela-pdf" onclick="gerarPDFRastreabilidadeVendas()"><i class="fas fa-file-pdf"></i> PDF</button></div></div>
+        <div class="hdr"><div class="hdr-linha1"><button class="btn-tela-voltar" onclick="irParaTelaERP('telaMenu')"><i class="fas fa-arrow-left"></i> Voltar</button><h2>Rastreabilidade</h2></div><div class="hdr-acoes"><button class="btn-tela-pdf" onclick="gerarPDFRastreabilidadeVendas()"><i class="fas fa-file-pdf"></i> PDF</button> <button class="btn-tela-pdf" onclick="gerarPDFRastreioLote()" style="background:#c49a2b"><i class="fas fa-search"></i> Lote</button></div></div>
 
         <div style="display:flex;gap:6px;margin:10px 0 6px;background:#f4ede0;border-radius:14px;padding:5px">
             <button id="tabBtnRastreio_lote" onclick="_mudarAbaRastreabilidade('lote')" style="flex:1;border:1px solid transparent;border-radius:10px;padding:11px 4px;font-size:11.5px;font-weight:700;cursor:pointer;background:#2c1810;color:#f0c674;box-shadow:0 2px 8px rgba(44,24,16,0.18);transition:background .15s"><i class="fas fa-box" style="margin-right:5px"></i>Lote</button>
