@@ -26,7 +26,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-11-03-38';
+    window.R8_BUILD = '2026-11-03-39';
     // Data de hoje (AAAA-MM-DD) no horário LOCAL — toISOString() usa UTC e, depois das 21h no Brasil, devolvia amanhã.
     window._r8HojeISO = function() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); };
     (function() {
@@ -18624,7 +18624,7 @@ if(document.readyState === 'loading'){
             <div class="card-menu" onclick="irParaTelaERP('telaRastreabilidade')"><i class="fas fa-qrcode" style="color:#EC4899"></i><span>Rastreabilidade</span></div>
             <div class="card-menu" onclick="irParaTelaERP('telaSanitizacao')"><i class="fas fa-pump-soap" style="color:#10B981"></i><span>Sanitização</span><span class="card-menu-badge" id="badgeSanitizacao"></span></div>
             <div class="card-menu" onclick="_r8AbrirFinanceiro('dash')"><i class="fas fa-wallet" style="color:#1d4ed8"></i><span>Financeiro</span></div>
-            <div class="card-menu" onclick="irParaTelaERP('telaRelatorios')"><i class="fas fa-file-chart-bar" style="color:#6366f1"></i><span>Relatórios</span></div>
+            <div class="card-menu" onclick="irParaTelaERP('telaRelatorios')"><i class="fas fa-chart-bar" style="color:#6366f1"></i><span>Relatórios</span></div>
             <div class="card-menu" onclick="irParaTelaERP('telaAuditoria')"><i class="fas fa-history" style="color:#64748b"></i><span>Auditoria</span></div>
             <div class="card-menu" onclick="irParaTelaERP('telaAdministrativo')"><i class="fas fa-user-shield" style="color:#475569"></i><span>Administrativo</span></div>
         </div>
