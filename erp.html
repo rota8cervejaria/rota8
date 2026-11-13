@@ -26,7 +26,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-11-12-52';
+    window.R8_BUILD = '2026-11-12-59';
     // Data de hoje (AAAA-MM-DD) no horário LOCAL — toISOString() usa UTC e, depois das 21h no Brasil, devolvia amanhã.
     window._r8HojeISO = function() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); };
     (function() {
@@ -2603,6 +2603,7 @@ window.abrirModal = function(tipo, estiloId) {
             + '<div class="campo"><label>Nº *</label><input type="text" id="numeroAssinante" placeholder="-"></div></div>'
             + '<div class="form-row"><div class="campo"><label>Bairro *</label><input type="text" id="bairroAssinante" placeholder="-"></div>'
             + '<div class="campo"><label>Cidade *</label><input type="text" id="cidadeAssinante" placeholder="-"></div></div>'
+            + '<div class="form-row"><div class="campo"><label>Estado (UF) *</label><input type="text" id="estadoAssinante" placeholder="-" maxlength="2"></div><div class="campo"><label>CEP *</label><input type="text" id="cepAssinante" placeholder="-"></div></div>'
             + '<div class="campo"><label>Celular *</label><input type="text" id="celularAssinante" placeholder="-"></div>'
             + '<div class="pix-area"><h4>Pagamento via PIX</h4><div class="chave-pix">52.013.107/0001-78</div>'
             + '<button class="btn-copiar" id="btnCopiarPix">Copiar chave</button></div>'
@@ -4331,7 +4332,7 @@ window._erp_tela_titulos = {
     'telaMovimentacoesEstoque':'Movimentações','telaEstoqueInsumos':'Estoque · Insumos','telaBaixaEstoque':'Baixa de Estoque',
     'telaEstoqueProdutoAcabado':'Produto Acabado','telaSubProcesso':'Processo de Produção',
     'telaEstoqueLimpeza':'Estoque · Mat. Higienização/Sanitização',
-    'telaLotesAtivos':'Lotes Ativos','telaReceitasImportadas':'Receitas Importadas','telaCarbonacao':'Carbonatação Forçada',
+    'telaLotesAtivos':'Lotes Ativos','telaCarbonacao':'Carbonatação Forçada',
     'telaProcessoProducao':'Ficha Técnica','telaFichasArquivadas':'Fichas Arquivadas',
     'telaSanitizacao':'Sanitização','telaEnvase':'Envase',
     'telaRastreabilidade':'Rastreabilidade','telaCustos':'Custos',
@@ -4411,8 +4412,7 @@ var _TELAS_SEGURAS_TEMPO_REAL = {
     telaPastDashboard:        function(){ window._renderPastDashboard(); },
     telaPastArquivados:       function(){ pastRenderHistorico(); },
     telaCurvaFermentacao:     function(){ renderCurvaFermentacao(); },
-    telaAnalise:              function(){ renderAnalise(); },
-    telaReceitasImportadas:   function(){ atualizarListaReceitasImportadas(); }
+    telaAnalise:              function(){ renderAnalise(); }
 };
 
 window._atualizarTelaAtivaEmTempoReal = function() {
@@ -5374,7 +5374,7 @@ function _renderizarAlertasEstoque() {
         + '<div style="font-weight:800;font-size:13px;color:#991b1b;margin-bottom:8px">⚠ Estoque Baixo — reposição necessária</div>'
         + alertas.map(function(i){
             return '<div style="font-size:12px;color:#7f1d1d;padding:3px 0;border-bottom:1px solid rgba(239,68,68,0.15)">'
-                + '• <strong>'+i.descricao+'</strong> ('+i.codigo+'): '
+                + '• <strong>'+esc(i.descricao)+'</strong> ('+esc(i.codigo)+'): '
                 + '<span style="font-weight:700">'+i.saldo.toFixed(2)+' '+i.unidade+'</span></div>';
           }).join('')
         + '</div>';
@@ -6253,7 +6253,7 @@ window.renderLotesAtivos = function() {
             var cor = e.ok ? '#065f46' : '#94a3b8';
             html += '<div class="lote-etapa">'
                 + '<div class="lote-etapa-ico" style="background:'+bg+';border:1.5px solid '+brd+';color:'+cor+'">'+e.ico+'</div>'
-                + '<div style="font-size:9px;color:'+cor+';font-weight:600;text-align:center;line-height:1.2">'+e.nome+'</div>'
+                + '<div style="font-size:9px;color:'+cor+';font-weight:600;text-align:center;line-height:1.2">'+esc(e.nome)+'</div>'
                 + '</div>';
         });
         html += '</div>';
@@ -7568,7 +7568,6 @@ window.irParaTelaERP = function(id) {
     if(id==='telaControleEmbalagens') atualizarControleEmbalagens();
     if(id==='telaControleTanques') atualizarControleTanques();
     if(id==='telaCarbonacao') { setTimeout(function(){ if(window._carbRenderTabela) _carbRenderTabela(); }, 100); }
-    if(id==='telaReceitasImportadas') atualizarListaReceitasImportadas();
     if(id==='telaFichasArquivadas') atualizarListaFichasERP();
     if(id==='telaEstoqueInsumos') {
         // CORREÇÃO (2026-09-28): o filtro "Tipo" (e a busca) ficavam com o
@@ -9260,6 +9259,8 @@ window.salvarEnvaseProducaoERP=function(){
     var vol=document.getElementById('producaoEnvaseVolume')?.value;
     if(!data){R8.toast.aviso('Informe a data.');return;}
     if(!tipo){R8.toast.aviso('Selecione a embalagem (Cadastro Embalagens p/ Envase).');return;}
+    var _volNum=parseFloat(vol);
+    if(!(_volNum>0)){R8.toast.aviso('Informe o volume (L) do envase.');return;}
     // Barril que volta de descarte/venda e ainda não foi sanitizado não pode ser enchido
     var _barEnv=embCodigo?(dadosERP.barris||[]).find(function(b){return b.codigo===embCodigo;}):null;
     if(_barEnv && _barEnv.status==='Aguardando Sanitização'){
@@ -9267,6 +9268,7 @@ window.salvarEnvaseProducaoERP=function(){
         return;
     }
     var loteAtual=document.getElementById('producaoLote')?.value||'';
+    var _eraEdicao=(_editSecaoProducao==='listaEnvaseProducao'&&_editIdxProducao!==null);
     var item={data:data,tipo:tipo,embalagemCodigo:embCodigo,embalagemDescricao:embDescricao,quantidade:qtd,volumeUnitario:volUnit,volume:vol};
     if(!window.envasesAdicionadosProducao) window.envasesAdicionadosProducao=[];
     if(_editSecaoProducao==='listaEnvaseProducao'&&_editIdxProducao!==null){
@@ -9279,6 +9281,7 @@ window.salvarEnvaseProducaoERP=function(){
     }else{
         window.envasesAdicionadosProducao.push(item);
     }
+    try{ if(typeof registrarAuditoria==='function') registrarAuditoria('Envase', _eraEdicao?'editar':'criar', 'Lote: '+(loteAtual||'-')+' — '+tipo+(embCodigo?' ['+embCodigo+']':'')+' — '+_volNum+'L'); }catch(e){}
     if(embCodigo) window._bloquearBarrilPorCodigo(embCodigo,loteAtual); // bloqueia o barril usado neste envase
     _renderListaEnvase();
     try{ var _al=window._r8AlertasEnvaseDoForm(); if(_al.length) R8.toast.aviso('⚠ Atenção ao envase: '+_al.join(' '),9000); }catch(e){}
@@ -11003,21 +11006,7 @@ window.atualizarListaEnvase=function(){
             + '</div>';
     }).join('');
 };
-window.editarEnvase=function(i){
-    var e = dadosERP.envases[i];
-    if(!e) return;
-    _editandoIdxEnvase = i;
-    popularSelectLoteEnvase();
-    document.getElementById('envaseData').value = e.data || '';
-    document.getElementById('envaseLote').value = e.lote || '';
-    document.getElementById('envaseTipo').value = e.tipo || '';
-    document.getElementById('envaseQuantidade').value = e.quantidade || '';
-    document.getElementById('envaseVolumeUnitario').value = e.volumeUnitario || '';
-    document.getElementById('envaseVolumeTotal').value = e.volumeTotal || '';
-    document.getElementById('envaseLoteEmbalagem').value = e.loteEmbalagem || '';
-    document.getElementById('envaseResponsavel').value = e.responsavel || '';
-    mostrarFormERP('formEnvase');
-};
+
 window.excluirEnvase=function(i){confirmarAcao({titulo:'Excluir registro de envase',msg:'Tem certeza que deseja excluir este envase? O estoque de produto acabado correspondente será estornado. Esta ação não pode ser desfeita.',onConfirm:function(){
     var reg = dadosERP.envases[i];
     if (reg) {
@@ -12558,7 +12547,7 @@ function popularSelectLotesDisponveis(selectId,estiloInputId){
             : (p.tipoEmbalagem ? ' · ' + p.tipoEmbalagem : '');
         var _vv = window._r8ValidadeProduto(p);
         var _idade = _vv ? ' · envasado há '+_vv.dias+' d'+(_vv.estado==='vencido'?' (VENCIDO)':(_vv.estado==='vencendo'?' (vence em '+_vv.restantes+' d)':'')) : '';
-        s.innerHTML+='<option value="'+chave+'" data-estilo="'+p.estilo+'" data-quantidade="'+saldoLote+'">'+(_ix===0&&lotes.length>1&&_vv?'⭐ Mais antigo: ':'')+p.lote+rotuloEmb+' — '+p.estilo+' ('+saldoLote.toFixed(1)+'L disponível no lote)'+_idade+'</option>';
+        s.innerHTML+='<option value="'+chave+'" data-estilo="'+esc(p.estilo)+'" data-quantidade="'+saldoLote+'">'+(_ix===0&&lotes.length>1&&_vv?'⭐ Mais antigo: ':'')+esc(p.lote)+rotuloEmb+' — '+esc(p.estilo)+' ('+saldoLote.toFixed(1)+'L disponível no lote)'+_idade+'</option>';
     });
     if(estiloInputId){s.onchange=function(){let opt=this.options[this.selectedIndex];let estilo=opt?.getAttribute('data-estilo')||'';let el=document.getElementById(estiloInputId);if(el)el.value=estilo;};}
 }
@@ -13202,6 +13191,14 @@ function _iniciarDRE() {
     if (df && !df.value) df.value = fmt(fim);
 }
 
+// Vendas manuais lançadas no Financeiro (sem origemVendaId). As vendas de PDV/TAP
+// já têm lançamento espelhado em financeiro.r8v com origemVendaId — por isso são
+// excluídas aqui para não contar a mesma venda duas vezes.
+function _r8ReceitaVendasManuais(pred) {
+    return ((dadosERP.financeiro && dadosERP.financeiro.r8v) || [])
+        .filter(function(v){ return !v.origemVendaId && pred(v.data); })
+        .reduce(function(a,v){ return a + (parseFloat(v.valor) || 0); }, 0);
+}
 window.renderDRE = function() {
     var di = document.getElementById('dreDataInicio')?.value;
     var df = document.getElementById('dreDataFim')?.value;
@@ -13245,11 +13242,12 @@ window.renderDRE = function() {
     // Perdas por descarte (insumos e produto acabado), valorizadas no momento do descarte
     var perdasDescarte = (dadosERP.movimentacoesEstoque||[])
         .filter(function(m){ return m.tipo==='saida' && m.origem && m.origem.indexOf('Descarte')===0 && noIntervaloMov(m.data); })
-        .reduce(function(a,m){ return a + (m.quantidade||0) * (parseFloat(m.valorUnit) || 0); }, 0);
+        .reduce(function(a,m){ var unit = (m.valorUnit != null) ? parseFloat(m.valorUnit) || 0 : _r8CustoMedioInsumo(m.codigo); return a + (m.quantidade||0) * unit; }, 0);
 
     var receitaPDV = vendasPDV.reduce(function(a,v){ return a+(v.valorTotal||0); }, 0);
     var receitaTAP = vendasTAP.reduce(function(a,v){ return a+(v.valorTotal||0); }, 0);
-    var receitaTotal = receitaPDV + receitaTAP;
+    var receitaManual = _r8ReceitaVendasManuais(function(d){ return noIntervalo(d); });
+    var receitaTotal = receitaPDV + receitaTAP + receitaManual;
     var margemBruta = receitaTotal - custoMovPeriodo;
     var percMargem = receitaTotal > 0 ? ((margemBruta/receitaTotal)*100).toFixed(1) : null;
 
@@ -13264,6 +13262,7 @@ window.renderDRE = function() {
         {label:'— — —',                 val: '',                          tipo:'separador'},
         {label:'Receita PDV',           val: 'R$ '+receitaPDV.toFixed(2), tipo: receitaPDV>0?'positivo':'neutro'},
         {label:'Receita TAP',           val: 'R$ '+receitaTAP.toFixed(2), tipo: receitaTAP>0?'positivo':'neutro'},
+        {label:'Vendas manuais (Financeiro)', val: 'R$ '+receitaManual.toFixed(2), tipo: receitaManual>0?'positivo':'neutro'},
         {label:'Receita Total (=)',      val: 'R$ '+receitaTotal.toFixed(2), tipo:'total'},
         {label:'Custo de Insumos (-)',   val: 'R$ '+custoMovPeriodo.toFixed(2), tipo:'negativo'},
         {label:'Margem Bruta (=)',       val: 'R$ '+margemBruta.toFixed(2)+(percMargem?' ('+percMargem+'%)':''), tipo: margemBruta>=0?'positivo':'negativo'},
@@ -13807,86 +13806,6 @@ window.importarBackupJSON=function(){if(!window._r8ExigirAdmin('Restaurar backup
     // do Firebase (ainda não atualizados) e reintroduzir as duplicatas.
     setTimeout(function(){ location.reload(); }, 1500);
     }catch(ex){R8.log.erro('importarBackupJSON', ex);R8.toast.erro('Arquivo inválido.');}};reader.readAsText(file);};input.click();};
-
-// ═══════════════════════════════════════════════════════
-// RECEITAS POR LOTE — lê fichasTecnicas com receitaPDF
-// ═══════════════════════════════════════════════════════
-window.importarReceitaPDF = function() { /* stub mantido — importação feita na Nova Ficha */ };
-
-window.atualizarListaReceitasImportadas = function() {
-    var c = document.getElementById('listaReceitasImportadas');
-    if (!c) return;
-
-    // Filtra apenas fichas que têm receita PDF importada
-    var comReceita = (dadosERP.fichasTecnicas || []).filter(function(f) {
-        return f.receitaPDF && f.receitaPDF.length > 0;
-    });
-
-    if (!comReceita.length) {
-        c.innerHTML = '<div class="card-item" style="text-align:center;padding:32px 16px;color:#94a3b8">'
-            + '<i class="fas fa-folder-open" style="font-size:36px;margin-bottom:12px;display:block;color:#cbd5e1"></i>'
-            + '<strong style="display:block;margin-bottom:6px;color:#64748b">Nenhuma receita importada</strong>'
-            + '<span style="font-size:12px">Importe receitas em PDF na tela de<br><em>Ficha Técnica → Importar Receita</em></span>'
-            + '</div>';
-        return;
-    }
-
-    // Agrupa por estilo para organização visual
-    var porEstilo = {};
-    comReceita.forEach(function(f) {
-        var est = f.estilo || 'Sem estilo';
-        if (!porEstilo[est]) porEstilo[est] = [];
-        porEstilo[est].push(f);
-    });
-
-    var html = '';
-    Object.keys(porEstilo).sort().forEach(function(estilo) {
-        html += '<div style="margin:18px 0 6px;padding:0 2px">'
-            + '<span style="font-size:11px;font-weight:800;color:#92400e;text-transform:uppercase;letter-spacing:0.8px">'
-            + '<i class="fas fa-tag" style="margin-right:5px;color:#c49a2b"></i>' + R8.esc(estilo) + '</span>'
-            + '</div>';
-
-        porEstilo[estilo].forEach(function(f, idx) {
-            // Formatar data
-            var dataFmt = '—';
-            if (f.dataProducao) {
-                var dp = f.dataProducao;
-                if (/^\d{4}-\d{2}-\d{2}/.test(dp)) {
-                    var pts = dp.split('T')[0].split('-');
-                    dataFmt = pts[2] + '/' + pts[1] + '/' + pts[0];
-                } else if (/^\d{2}\/\d{2}\/\d{2}$/.test(dp)) {
-                    var p2 = dp.split('/');
-                    dataFmt = p2[0] + '/' + p2[1] + '/20' + p2[2];
-                } else { dataFmt = dp; }
-            }
-
-            // Índice real na fichasTecnicas para _abrirReceitaPDF
-            var idxReal = dadosERP.fichasTecnicas.indexOf(f);
-
-            html += '<div class="receita-lote-card">'
-                // Ícone PDF grande
-                + '<div class="receita-lote-icon"><i class="fas fa-file-pdf"></i></div>'
-                // Dados
-                + '<div class="receita-lote-info">'
-                +   '<div class="receita-lote-titulo">' + R8.esc(f.lote || '—') + '</div>'
-                +   '<div class="receita-lote-meta">'
-                +     '<span><i class="fas fa-calendar-alt"></i> ' + dataFmt + '</span>'
-                +     '<span><i class="fas fa-file"></i> ' + R8.esc(f.receitaNome || 'receita.pdf') + '</span>'
-                +   '</div>'
-                + '</div>'
-                // Botão abrir
-                + '<button class="receita-lote-btn" onclick="_abrirReceitaPDF(dadosERP.fichasTecnicas[' + idxReal + '].receitaPDF, dadosERP.fichasTecnicas[' + idxReal + '].receitaNome)" title="Abrir PDF">'
-                +   '<i class="fas fa-external-link-alt"></i>'
-                + '</button>'
-                + '</div>';
-        });
-    });
-
-    c.innerHTML = html;
-    // Contador no header
-    var h2 = document.querySelector('#telaReceitasImportadas h2');
-    if (h2) h2.textContent = 'Receitas por Lote (' + comReceita.length + ')';
-};
 
 // ═══════════════════════════════════════════════════════
 // PDFs
@@ -15392,6 +15311,11 @@ window.enviarParaWhatsApp=function(){
     let cidade=document.getElementById('cidadeAssinante')?.value||'';
     let estado=document.getElementById('estadoAssinante')?.value||'';
     let cep=document.getElementById('cepAssinante')?.value||'';
+    var _ufEl=document.getElementById('estadoAssinante'), _cepEl=document.getElementById('cepAssinante');
+    var _ufOk=/^[A-Za-z]{2}$/.test(estado.trim()), _cepOk=/^\d{5}-?\d{3}$/.test(cep.trim());
+    if(_ufEl)_ufEl.classList.toggle('err',!_ufOk);
+    if(_cepEl)_cepEl.classList.toggle('err',!_cepOk);
+    if(!_ufOk||!_cepOk){ R8.toast.aviso('Informe o Estado (UF) e o CEP válidos.'); return; }
     let cel=document.getElementById('celularAssinante')?.value||'';
     let msg='🍺 NOVA ASSINATURA - ROTA 8 CONFRARIA 🍺\n\n📋 DADOS:\nNome: '+nome+'\nCPF: '+cpf+'\nCelular: '+cel+'\n\n📍 ENDEREÇO:\n'+rua+', '+num+' - '+bairro+', '+cidade+'/'+estado+' - CEP: '+cep+'\n\n💳 PIX: 52.013.107/0001-78';
     window.open('https://wa.me/5547992087958?text='+encodeURIComponent(msg),'_blank');
@@ -15492,7 +15416,7 @@ function _pubCardFichaTecnicaBarril(lote) {
     if (!lote) return '';
     return '<div class="pub-card pub-card-block">'
         +   '<div class="pub-card-title"><i class="fas fa-flask"></i> Ficha Técnica do Lote</div>'
-        +   '<a href="?lote=' + encodeURIComponent(lote) + '" onclick="event.preventDefault();window.mostrarLotePub(\'' + String(lote).replace(/'/g,"\\'") + '\');" class="pub-link-acesso"><i class="fas fa-arrow-up-right-from-square"></i> Ver ficha completa (insumos, mosturação, fermentação)</a>'
+        +   '<a href="?lote=' + encodeURIComponent(lote) + '" onclick="event.preventDefault();window.mostrarLotePub(decodeURIComponent(\'' + encodeURIComponent(String(lote)).replace(/'/g,'%27') + '\'));" class="pub-link-acesso"><i class="fas fa-arrow-up-right-from-square"></i> Ver ficha completa (insumos, mosturação, fermentação)</a>'
         + '</div>';
 }
 
@@ -16049,7 +15973,7 @@ window._r8MontarLocalizacaoLote = function(f) {
     var barrisHTML = linhas.map(function(b){
         return '<div class="pub-barril-row-full">'
             + '<div class="pub-barril-row"><span class="pub-barril-row-codigo">' + (b.codigo ? '🛢️ ' + b.codigo : '📦 ' + b.tipo) + '</span><span class="pub-barril-row-tipo">' + (b.codigo ? b.tipo : '') + '</span><span class="pub-barril-row-vol">' + b.vol.toFixed(1) + ' L</span></div>'
-            + '<div class="pub-barril-row-destino">📍 Destino: ' + b.destino + '</div>'
+            + '<div class="pub-barril-row-destino">📍 Destino: ' + esc(b.destino) + '</div>'
             + '</div>';
     }).join('');
     if (!barrisHTML) barrisHTML = '<p class="pub-sem-barril">— nenhum barril envasado ainda —</p>';
@@ -16119,13 +16043,13 @@ window.mostrarLocalizacaoLotePub = function(lote) {
             + _pubHeader('Localização do Lote', 'window._qrModoAtivo=false;mostrarLandingPage()')
             + '<div class="pub-hero">'
             +   '<p class="pub-hero-tag">Rastreabilidade — Onde está este lote</p>'
-            +   '<div class="pub-hero-lote">' + f.lote + '</div>'
+            +   '<div class="pub-hero-lote">' + esc(f.lote) + '</div>'
             +   '<div class="pub-hero-estilo">' + (f.estilo || '') + '</div>'
             + '</div>'
             + '<div class="pub-body">'
             +   window._r8MontarLocalizacaoLote(f)
             +   '<div class="pub-section" style="margin-top:8px;text-align:center">'
-            +     '<a href="javascript:void(0)" onclick="mostrarLotePub(\'' + f.lote.replace(/'/g,"\\'") + '\')" style="color:#c49a2b;font-size:13px;text-decoration:underline">Ver Ficha Técnica completa deste lote</a>'
+            +     '<a href="javascript:void(0)" onclick="mostrarLotePub(decodeURIComponent(\'' + encodeURIComponent(String(f.lote)).replace(/'/g,'%27') + '\'))" style="color:#c49a2b;font-size:13px;text-decoration:underline">Ver Ficha Técnica completa deste lote</a>'
             +   '</div>'
             + '</div>'
             + _pubFooter()
@@ -16534,7 +16458,7 @@ function _renderizarConteudoLote(container, f) {
         ? '<div style="overflow-x:auto"><table class="pub-table"><thead><tr><th>Código</th><th>Descrição</th><th>Qtd.</th><th>Fornecedor</th><th>Prod/Fab</th><th>Lote Insumo</th><th>Validade</th></tr></thead><tbody>'
             + insumos.map(function(i){
                 var cad = (dadosERP.insumos||[]).find(function(x){ return x.codigo === i.codigo; });
-                return '<tr><td>'+i.codigo+'</td><td>'+i.descricao+'</td><td>'+i.quantidade+(i.unidade?' '+i.unidade:'')+'</td><td>'+(cad&&cad.fornecedor?cad.fornecedor:'—')+'</td><td>'+(cad&&(cad.produtor||cad.fabricante)?(cad.produtor||cad.fabricante):'—')+'</td><td>'+(cad&&cad.lote?cad.lote:'—')+'</td><td>'+(cad&&cad.validade?formatarData(cad.validade):'—')+'</td></tr>';
+                return '<tr><td>'+esc(i.codigo)+'</td><td>'+esc(i.descricao)+'</td><td>'+i.quantidade+(i.unidade?' '+esc(i.unidade):'')+'</td><td>'+(cad&&cad.fornecedor?esc(cad.fornecedor):'—')+'</td><td>'+(cad&&(cad.produtor||cad.fabricante)?esc(cad.produtor||cad.fabricante):'—')+'</td><td>'+(cad&&cad.lote?esc(cad.lote):'—')+'</td><td>'+(cad&&cad.validade?formatarData(cad.validade):'—')+'</td></tr>';
             }).join('')
             + '</tbody></table></div>'
         : '<p style="color:#94a3b8;font-style:italic;text-align:center">Nenhum insumo registrado</p>';
@@ -16591,8 +16515,8 @@ function _renderizarConteudoLote(container, f) {
         + _pubHeader('Rastreabilidade', 'window._qrModoAtivo=false;mostrarLandingPage()')
         + '<div class="pub-hero">'
         +   '<p class="pub-hero-tag">Ficha de Rastreabilidade</p>'
-        +   '<div class="pub-hero-lote">'+f.lote+'</div>'
-        +   '<div class="pub-hero-estilo">'+f.estilo+'</div>'
+        +   '<div class="pub-hero-lote">'+esc(f.lote)+'</div>'
+        +   '<div class="pub-hero-estilo">'+esc(f.estilo)+'</div>'
         +   '<div class="pub-hero-divider"></div>'
         +   '<div class="pub-hero-meta">'
         +     '<div class="pub-meta-item"><span class="pub-meta-label">Data</span><span class="pub-meta-value">'+(f.dataProducao||'—')+'</span></div>'
@@ -16613,7 +16537,7 @@ function _renderizarConteudoLote(container, f) {
         +   '<div class="pub-section"><h3 class="pub-sec-title"><i class="fas fa-beer-mug-empty"></i> Barris — Destino de Cada Unidade</h3><div class="pub-card">'+(typeof window._r8MontarLocalizacaoLote==='function' ? window._r8MontarLocalizacaoLote(f) : '')+'</div></div>'
         +   '<div class="pub-section"><h3 class="pub-sec-title"><i class="fas fa-exchange-alt"></i> Movimentações do Lote</h3><div class="pub-card">'+_pubMovimentacoesLoteConteudo(f.lote)+'</div></div>'
         +   '<div class="pub-section"><h3 class="pub-sec-title"><i class="fas fa-user-check"></i> Responsável</h3><div class="pub-card"><div class="pub-resp-box"><div class="pub-resp-icon"><i class="fas fa-user"></i></div><div><div class="pub-resp-name">'+(f.responsavel||'—')+'</div><div class="pub-resp-sub">Mestre Cervejeiro — Rota 8 Cervejaria</div></div></div></div></div>'
-        +   '<div class="pub-section"><h3 class="pub-sec-title"><i class="fas fa-qrcode"></i> Autenticidade</h3><div class="pub-card"><div class="pub-qr-box"><div id="_pubQrImg" style="min-height:60px;display:flex;align-items:center;justify-content:center"><i class="fas fa-spinner fa-spin" style="color:#94a3b8;font-size:24px"></i></div><div class="pub-auth-code">'+f.lote+'</div><p class="pub-auth-text">Este QR Code certifica a autenticidade e rastreabilidade<br>deste lote produzido pela Rota 8 Cervejaria.</p></div></div></div>'
+        +   '<div class="pub-section"><h3 class="pub-sec-title"><i class="fas fa-qrcode"></i> Autenticidade</h3><div class="pub-card"><div class="pub-qr-box"><div id="_pubQrImg" style="min-height:60px;display:flex;align-items:center;justify-content:center"><i class="fas fa-spinner fa-spin" style="color:#94a3b8;font-size:24px"></i></div><div class="pub-auth-code">'+esc(f.lote)+'</div><p class="pub-auth-text">Este QR Code certifica a autenticidade e rastreabilidade<br>deste lote produzido pela Rota 8 Cervejaria.</p></div></div></div>'
         + '</div>'
         + _pubFooter()
         + '</div>';
@@ -16809,8 +16733,8 @@ window.abrirFichaTecnicaPublica = function(lote) {
             + '<div style="background:#c49a2b;width:72px;height:72px;border-radius:50%;display:flex;align-items:center;justify-content:center">'
             + '<i class="fas fa-file-pdf" style="font-size:32px;color:#1a0f08"></i></div>'
             + '<div>'
-            + '<p style="font-family:Bebas Neue,sans-serif;font-size:32px;letter-spacing:3px;color:#c49a2b;line-height:1">'+f.estilo.toUpperCase()+'</p>'
-            + '<p style="font-family:Montserrat,sans-serif;font-size:14px;color:#94a3b8;margin-top:4px">Lote: '+f.lote+' · '+( f.dataProducao||'—')+'</p>'
+            + '<p style="font-family:Bebas Neue,sans-serif;font-size:32px;letter-spacing:3px;color:#c49a2b;line-height:1">'+esc(f.estilo.toUpperCase())+'</p>'
+            + '<p style="font-family:Montserrat,sans-serif;font-size:14px;color:#94a3b8;margin-top:4px">Lote: '+esc(f.lote)+' · '+esc(f.dataProducao||'—')+'</p>'
             + '</div>'
             + '<p style="font-family:Montserrat,sans-serif;font-size:14px;color:#fff;max-width:320px;line-height:1.6">Ficha Técnica de Produção carregada com sucesso.</p>'
             + '<button id="btnAbrirFicha" style="padding:16px 36px;background:#c49a2b;color:#1a0f08;border:none;border-radius:12px;font-family:Montserrat,sans-serif;font-weight:700;font-size:16px;cursor:pointer;letter-spacing:1px;display:flex;align-items:center;gap:10px">'
@@ -17580,7 +17504,7 @@ window.renderDREMensal = function() {
     var vendasTAP = (dadosERP.vendasTaps||[]).filter(function(v){return (v.data||'').slice(0,7)===periodo;});
     var receitaPDV = vendasPDV.reduce(function(a,v){return a+(v.valorTotal||0);},0);
     var receitaTAP = vendasTAP.reduce(function(a,v){return a+(v.valorTotal||0);},0);
-    var receitaBruta = receitaPDV + receitaTAP;
+    var receitaBruta = receitaPDV + receitaTAP + _r8ReceitaVendasManuais(function(d){ return (d||'').slice(0,7)===periodo; });
 
     // CMV = custo dos lotes produzidos no período
     var fichasMes = (dadosERP.fichasTecnicas||[]).filter(function(f){return (f.dataProducao||'').slice(0,7)===periodo;});
@@ -17651,7 +17575,7 @@ window.gerarPDFDRE = function() {
     var vendasTAP = (dadosERP.vendasTaps||[]).filter(function(v){return (v.data||'').slice(0,7)===periodo;});
     var receitaPDV = vendasPDV.reduce(function(a,v){return a+(v.valorTotal||0);},0);
     var receitaTAP = vendasTAP.reduce(function(a,v){return a+(v.valorTotal||0);},0);
-    var receitaBruta = receitaPDV + receitaTAP;
+    var receitaBruta = receitaPDV + receitaTAP + _r8ReceitaVendasManuais(function(d){ return (d||'').slice(0,7)===periodo; });
     var fichasMes = (dadosERP.fichasTecnicas||[]).filter(function(f){return (f.dataProducao||'').slice(0,7)===periodo;});
     var cmv = fichasMes.reduce(function(a,f){ return a + (_calcularCustoLote(f.lote).totalCusto||0); }, 0);
     var lucroBruto = receitaBruta - cmv;
@@ -18568,7 +18492,7 @@ window.calcularRefratometro = function() {
     window.salvarVendaPDVERP = function(){
         _origVendaPDV && _origVendaPDV();
         var lote = document.getElementById('vendaLotePDV')?.value||'';
-        var qtd  = document.getElementById('vendaVolumePDV')?.value||'';
+        var qtd  = document.getElementById('vendaQtdePDV')?.value||'';
         registrarAuditoria('Venda', 'criar', 'PDV — Lote: '+lote+' — '+qtd+'L');
     };
 
@@ -18580,20 +18504,11 @@ window.calcularRefratometro = function() {
         registrarAuditoria('Venda', 'criar', 'TAP — Lote: '+lote);
     };
 
-    // Wrap adicionarEnvaseERP
-    var _origEnvase = window.adicionarEnvaseERP;
-    window.adicionarEnvaseERP = function(){
-        _origEnvase && _origEnvase();
-        var lote = document.getElementById('envaseLote')?.value||'';
-        var vol  = document.getElementById('envaseVolume')?.value||'';
-        registrarAuditoria('Envase', 'criar', 'Lote: '+lote+' — '+vol+'L');
-    };
-
     // Wrap salvarSanitizacaoERP
     var _origSanit = window.salvarSanitizacaoERP;
     window.salvarSanitizacaoERP = function(){
         _origSanit && _origSanit();
-        var equip = document.getElementById('sanitEquipamento')?.value||'';
+        var equip = document.getElementById('sanitizacaoEquipamento')?.value||'';
         registrarAuditoria('Sanitização', 'criar', 'Equipamento: '+equip);
     };
 })();
@@ -18718,6 +18633,7 @@ if(document.readyState === 'loading'){
             <div class="card-sub" onclick="irParaTelaERP('telaControleTanques')"><i style="color:#5b6b7c"><svg viewBox="0 0 24 24" style="width:1em;height:1em;vertical-align:-0.125em" aria-hidden="true"><rect x="11" y=".8" width="2" height="2.4" rx=".6" fill="currentColor"/><path fill="currentColor" d="M6.5 6.2C6.5 3.8 9 2.6 12 2.6s5.5 1.2 5.5 3.6z"/><rect x="5" y="6.2" width="14" height="10.4" fill="currentColor"/><path fill="currentColor" d="M5 16.6l4.4 4.6h5.2l4.4-4.6z"/><path d="M5 9.6h14M5 13.2h14" stroke="#f9f7f4" stroke-width=".9"/><path d="M7.2 21.2v2.4M16.8 21.2v2.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M19 11.6h2.4" stroke="currentColor" stroke-width="1.2"/></svg></i><span>Controle Tanques</span><span class="card-menu-badge" id="badgeTanques"></span></div>
             <div class="card-sub" onclick="irParaTelaERP('telaControleEmbalagens')"><i class="fas fa-dolly" style="color:#92400e"></i><span>Controle Embalagens</span><span class="card-menu-badge" id="badgeEmbalagens"></span></div>
             <div class="card-sub" onclick="irParaTelaERP('telaSanitizacao')"><i class="fas fa-pump-soap" style="color:#10B981"></i><span>Sanitização</span><span class="card-menu-badge" id="badgeSanitizacao"></span></div>
+            <div class="card-sub" onclick="irParaTelaERP('telaMovimentacoesEstoque')"><i class="fas fa-list-ul" style="color:#475569"></i><span>Movimentações</span><small>Histórico de estoque</small></div>
         </div>
         <!-- Alertas de estoque baixo -->
         <div id="estoqueAlertas"></div>
@@ -18786,7 +18702,7 @@ if(document.readyState === 'loading'){
     <div id="telaMovimentacoesEstoque" class="tela">
         <div class="hdr">
             <div class="hdr-linha1">
-                <button class="btn-tela-voltar" onclick="irParaTelaERP('telaSubEstoque')"><i class="fas fa-arrow-left"></i> Voltar</button><h2>Movimentações</h2></div>
+                <button class="btn-tela-voltar" onclick="irParaTelaERP('telaGestao')"><i class="fas fa-arrow-left"></i> Voltar</button><h2>Movimentações</h2></div>
             <div class="hdr-acoes">
                 <button class="btn-tela-pdf" onclick="gerarPDFMovimentacoes()"><i class="fas fa-file-pdf"></i> PDF</button>
             </div>
@@ -18950,14 +18866,6 @@ if(document.readyState === 'loading'){
             </select>
         </div>
         <div id="listaLotesAtivos"></div>
-    </div>
-
-    <div id="telaReceitasImportadas" class="tela">
-        <div class="hdr">
-            <div class="hdr-linha1">
-                <button class="btn-tela-voltar" onclick="irParaTelaERP('telaSubProcesso')"><i class="fas fa-arrow-left"></i> Voltar</button><h2>Receitas Importadas</h2></div>
-        </div>
-        <div id="listaReceitasImportadas"></div>
     </div>
 
     <div id="telaProcessoProducao" class="tela">
@@ -21040,7 +20948,7 @@ function verAnexo(id){
   const c=getCompras().find(x=>x.id===id);
   if(!c||!c.anexo)return;
   const w=window.open();
-  if(w)w.document.write('<title>'+c.anexo.nome+'</title><body style="margin:0"><img src="'+c.anexo.dataUrl+'" style="max-width:100%" onerror="this.outerHTML=\'<embed src=&quot;'+c.anexo.dataUrl+'&quot; style=&quot;width:100vw;height:100vh&quot;/>\'"/></body>');
+  if(w)w.document.write('<title>'+esc(c.anexo.nome)+'</title><body style="margin:0"><img src="'+c.anexo.dataUrl+'" style="max-width:100%" onerror="this.outerHTML=\'<embed src=&quot;'+c.anexo.dataUrl+'&quot; style=&quot;width:100vw;height:100vh&quot;/>\'"/></body>');
 }
 
 function validarCompra(){
@@ -21048,13 +20956,13 @@ function validarCompra(){
   cIds.forEach(function(id){
     const campos=[
       {field:'ci-forn-'+id,t:'text'},{field:'ci-tipo-'+id,t:'sel'},
-      {field:'ci-desc-'+id,t:'text'},{field:'ci-vun-'+id,t:'text'},{field:'ci-qtd-'+id,t:'num'},{field:'ci-pag-'+id,t:'sel'}
+      {field:'ci-desc-'+id,t:'text'},{field:'ci-vun-'+id,t:'valor'},{field:'ci-qtd-'+id,t:'num'},{field:'ci-pag-'+id,t:'sel'}
     ];
     campos.forEach(function(c){
       const el=document.getElementById(c.field);
       if(!el)return;
       const v=(el.value||'').trim();
-      if(!v||v===''||v==='—'||(c.t==='num'&&parseFloat(v)<=0)){
+      if(!v||v===''||v==='—'||(c.t==='num'&&parseFloat(v)<=0)||(c.t==='valor'&&parseBR(v)<=0)){
         el.classList.add('err');ok=false;
       } else el.classList.remove('err');
     });
@@ -21153,7 +21061,7 @@ function renderHistCompras(){
       '<div class="lanc-dot '+(c.statusPag==='pago'?'pago':'pagar')+'"></div>'+
       '<div class="lanc-info">'+
         '<div class="lanc-desc">'+(c.fornecedor||'—')+'</div>'+
-        '<div class="lanc-sub">'+dataLabel(c.data)+' · '+c.secao+' · '+(c.tipo||'—')+(c.descricao?' · '+c.descricao:'')+fiscal+'</div>'+
+        '<div class="lanc-sub">'+dataLabel(c.data)+' · '+c.secao+' · '+(c.tipo||'—')+(c.descricao?' · '+esc(c.descricao):'')+fiscal+'</div>'+
       '</div>'+
       '<div class="lanc-right">'+
         '<div class="lanc-val pagar">'+fmtBRL(c.total)+'</div>'+
@@ -21892,7 +21800,7 @@ function excluirVenda(id){
   var msg = 'Deseja remover este lançamento de venda?';
   if (vendaPDV || vendaTap) {
     var origem = vendaPDV || vendaTap;
-    msg += '<br><br><strong style="color:#991b1b">Esta venda veio do Estoque (Lote ' + (origem.lote || '—') + ', ' + (origem.quantidade || 0) + 'L) — o registro de lá também será excluído, e o estoque de produto acabado será estornado.</strong>';
+    msg += '<br><br><strong style="color:#991b1b">Esta venda veio do Estoque (Lote ' + (esc(origem.lote) || '—') + ', ' + (origem.quantidade || 0) + 'L) — o registro de lá também será excluído, e o estoque de produto acabado será estornado.</strong>';
   }
   openModal('Excluir Venda', msg, 'Excluir', 'danger', function(){
     closeModal();
@@ -22439,7 +22347,9 @@ window._r8FinInit = function(pagina) {
             .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
     }
     function num(v) {
-        var n = parseFloat(String(v == null ? '' : v).replace(',', '.'));
+        var t = String(v == null ? '' : v);
+        if (t.indexOf(',') >= 0) t = t.replace(/\./g, '');
+        var n = parseFloat(t.replace(',', '.'));
         return isNaN(n) ? 0 : n;
     }
     function esc(s) { return (window.R8 && R8.esc) ? R8.esc(s) : String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
@@ -23032,7 +22942,7 @@ window._BREWBEER_HTML_B64 = "PCFET0NUWVBFIGh0bWw+PGh0bWwgbGFuZz0icHQtQlIiPjxoZWF
         div.className = 'tela';
         div.innerHTML =
             '<div class="hdr"><div class="hdr-linha1">'
-            + '<button class="btn-tela-voltar" onclick="irParaTelaERP(\'telaSubProcesso\')"><i class="fas fa-arrow-left"></i> Voltar</button>'
+            + '<button class="btn-tela-voltar" onclick="irParaTelaERP(window._bbOrigemTela||\'telaSubProcesso\')"><i class="fas fa-arrow-left"></i> Voltar</button>'
             + '<h2 style="text-align:left;padding-left:10px">Brew Beer</h2></div><div class="hdr-acoes"></div></div>'
             + '<iframe id="brewBeerFrame" style="width:100%;height:calc(100vh - 110px);border:0;display:block;background:#fff"></iframe>';
         pai.appendChild(div);
@@ -23054,6 +22964,7 @@ window._BREWBEER_HTML_B64 = "PCFET0NUWVBFIGh0bWw+PGh0bWwgbGFuZz0icHQtQlIiPjxoZWF
     // Ficha Técnica → Brew Beer (caminho inverso): leva Nome, Estilo, Lote, Tanque,
     // Data, Responsável e Volume da ficha aberta (e o estado da receita, se houver).
     window._bbAbrirDaFicha = function(){
+        window._bbOrigemTela = 'telaSubProcesso';
         function v(id){ var e = document.getElementById(id); return e ? e.value : ''; }
         var msg = { tipo:'ficha-para-brewbeer', estado: window._bbEstadoJSON || '', dados:{
             nome: v('producaoNome'), estilo: v('producaoEstilo'), lote: v('producaoLote'),
@@ -23086,6 +22997,8 @@ window._BREWBEER_HTML_B64 = "PCFET0NUWVBFIGh0bWw+PGh0bWwgbGFuZz0icHQtQlIiPjxoZWF
 
     window._bbAbrirComponente = function(){
         window._bbOrigemFicha = false;
+        var _ativa = document.querySelector('#erpDynamicContent .tela.ativa');
+        window._bbOrigemTela = (_ativa && _ativa.id && _ativa.id !== 'telaBrewBeer') ? _ativa.id : 'telaSubProcesso';
         _bbGarantirTela();
         var frame = document.getElementById('brewBeerFrame');
         if(frame && !frame.getAttribute('data-carregado')){
@@ -23108,6 +23021,8 @@ window._BREWBEER_HTML_B64 = "PCFET0NUWVBFIGh0bWw+PGh0bWwgbGFuZz0icHQtQlIiPjxoZWF
     window.addEventListener('message', function(ev){
         var d = ev && ev.data;
         if(!d || d.tipo !== 'brewbeer-xml' || !d.xml) return;
+        var _frBB = document.getElementById('brewBeerFrame');
+        if(!_frBB || ev.source !== _frBB.contentWindow) return;
         if(!window._r8ReceitaXML || typeof window._r8ReceitaXML.ler !== 'function' ||
            typeof window._r8ReceitaXML.plano !== 'function' || typeof window._r8ReceitaXML.aplicar !== 'function'){
             if(window.R8 && R8.toast) R8.toast.erro('Importador de receita XML não encontrado nesta versão do ERP.');
