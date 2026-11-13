@@ -28,7 +28,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-11-12-63';
+    window.R8_BUILD = '2026-11-12-64';
     // Data de hoje (AAAA-MM-DD) no horário LOCAL — toISOString() usa UTC e, depois das 21h no Brasil, devolvia amanhã.
     window._r8HojeISO = function() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); };
     (function() {
@@ -11877,7 +11877,7 @@ function _htmlSaldoResumo(categoria) {
             + '</div>';
     }).join('') + '</div>';
 }
-// Saldo Atual em destaque — usado só na tela Gestão > Produto Acabado.
+// Saldo Atual — apresentação clara para Gestão > Produto Acabado.
 // Mesma regra de agrupamento por lote do _htmlSaldoResumo('produtoAcabado').
 function _htmlSaldoDestaquePA() {
     var somaLotePA = {};
@@ -11886,27 +11886,34 @@ function _htmlSaldoDestaquePA() {
         somaLotePA[p.lote].qtd = parseFloat((somaLotePA[p.lote].qtd + (p.camaraFria||0)).toFixed(2));
     });
     var itens = Object.keys(somaLotePA).map(function(k){ return somaLotePA[k]; });
-    if (!itens.length) return '<div style="padding:14px;text-align:center;color:#94a3b8;font-size:12px">Nenhum item cadastrado.</div>';
+    if (!itens.length) return '<div style="padding:18px 16px;text-align:center;color:#64748b;font-size:13px">Nenhum lote em Câmara Fria.</div>';
     var total = itens.reduce(function(a,it){ return a + it.qtd; }, 0);
-    var html = '<div style="padding:16px 14px;text-align:center;background:linear-gradient(135deg,#2c1810,#4a2c1a)">'
-        + '<div style="font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#e8c872;font-weight:700">Total em Câmara Fria</div>'
-        + '<div style="font-family:\'Bebas Neue\',sans-serif;font-size:46px;line-height:1.05;color:#fff;margin-top:2px">'+total.toFixed(2)+' L</div>'
+    var html = '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;background:#f8fafc;border-bottom:1px solid #e2e8f0">'
+        + '<div><div style="font-size:11px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:#64748b">Total em Câmara Fria</div>'
+        + '<div style="font-size:12px;color:#94a3b8;margin-top:2px">'+itens.length+(itens.length===1?' lote':' lotes')+'</div></div>'
+        + '<div style="font-size:26px;font-weight:700;color:#0f766e;font-variant-numeric:tabular-nums;white-space:nowrap">'+total.toFixed(2)+' L</div>'
         + '</div>';
-    html += '<div style="display:flex;flex-direction:column;gap:10px;padding:12px">' + itens.map(function(it){
+    html += itens.map(function(it){
         var baixo = it.qtd <= 0;
         var medio = it.qtd > 0 && it.qtd < 5;
-        var cor = baixo ? '#991b1b' : (medio ? '#92400e' : '#065f46');
-        var bg  = baixo ? '#fee2e2' : (medio ? '#fef3c7' : '#d1fae5');
-        var borda = baixo ? '#dc2626' : (medio ? '#d97706' : '#059669');
-        var status = baixo ? 'Esgotado' : (medio ? 'Baixo' : 'Disponível');
-        return '<div style="background:'+bg+';border-left:6px solid '+borda+';border-radius:10px;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:10px">'
-            + '<div style="min-width:0">'
-            +   '<div style="font-size:13px;font-weight:700;color:'+cor+';overflow-wrap:anywhere">'+R8.esc(it.nome)+'</div>'
-            +   '<div style="font-size:11px;color:'+cor+';opacity:.85;margin-top:2px">Lote '+R8.esc(it.lote)+' · '+status+'</div>'
+        var st = baixo ? {txt:'Esgotado', fg:'#b91c1c', bg:'#fef2f2', bar:'#ef4444'}
+               : (medio ? {txt:'Baixo', fg:'#b45309', bg:'#fffbeb', bar:'#f59e0b'}
+                        : {txt:'Disponível', fg:'#047857', bg:'#ecfdf5', bar:'#10b981'});
+        var pct = total > 0 ? Math.max(0, Math.min(100, it.qtd / total * 100)) : 0;
+        return '<div style="padding:12px 16px;border-bottom:1px solid #f1f5f9">'
+            + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">'
+            +   '<div style="min-width:0">'
+            +     '<div style="font-size:14px;font-weight:600;color:#1e293b;overflow-wrap:anywhere">'+R8.esc(it.nome)+'</div>'
+            +     '<div style="font-size:12px;color:#64748b;margin-top:2px">Lote '+R8.esc(it.lote)+'</div>'
+            +   '</div>'
+            +   '<div style="text-align:right;flex-shrink:0">'
+            +     '<div style="font-size:18px;font-weight:700;color:#1e293b;font-variant-numeric:tabular-nums;white-space:nowrap">'+it.qtd.toFixed(2)+' L</div>'
+            +     '<span style="display:inline-block;margin-top:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:'+st.bg+';color:'+st.fg+'">'+st.txt+'</span>'
+            +   '</div>'
             + '</div>'
-            + '<div style="font-family:\'Bebas Neue\',sans-serif;font-size:30px;line-height:1;color:'+cor+';white-space:nowrap">'+it.qtd.toFixed(2)+' L</div>'
+            + '<div style="height:4px;background:#f1f5f9;border-radius:999px;margin-top:10px;overflow:hidden"><div style="height:100%;width:'+pct.toFixed(1)+'%;background:'+st.bar+';border-radius:999px"></div></div>'
             + '</div>';
-    }).join('') + '</div>';
+    }).join('');
     return html;
 }
 function _htmlMovimentacoesResumo(categoria) {
@@ -18831,7 +18838,7 @@ if(document.readyState === 'loading'){
             <div class="estoque-kpi ok"><div class="estoque-kpi-valor" id="kpiPACamaraFria">—</div><div class="estoque-kpi-label">Câmara Fria (L)</div></div>
         </div>
         <!-- Saldo Atual -->
-        <div style="display:flex;align-items:center;gap:8px;font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1.5px;color:#2c1810;margin:18px 0 10px;padding-bottom:6px;border-bottom:2px solid #c49a2b"><i class="fas fa-layer-group" style="color:#c49a2b;font-size:18px"></i>SALDO ATUAL</div>
+        <div style="display:flex;align-items:center;gap:8px;font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1.5px;color:#1e293b;margin:18px 0 10px;padding-bottom:6px;border-bottom:1px solid #e2e8f0"><i class="fas fa-layer-group" style="color:#64748b;font-size:18px"></i>SALDO ATUAL</div>
         <div style="background:#fff;border:1px solid #eee;border-radius:12px;overflow:hidden" id="saldoResumoProdutoAcabado"></div>
         <!-- Movimentações -->
         <div style="font-weight:800;color:#2c1810;margin:14px 0 6px;font-size:14px"><i class="fas fa-exchange-alt" style="color:#3b82f6;margin-right:6px"></i>Movimentações</div>
