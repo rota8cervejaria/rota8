@@ -28,7 +28,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-11-12-64';
+    window.R8_BUILD = '2026-11-14-72';
     // Data de hoje (AAAA-MM-DD) no horário LOCAL — toISOString() usa UTC e, depois das 21h no Brasil, devolvia amanhã.
     window._r8HojeISO = function() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); };
     (function() {
@@ -4367,7 +4367,7 @@ function _repopularTelaAtualAposLoad() {
             popularSelectSalLoteProducao();
             popularSelectTanqueProducao();
             popularSelectEstiloProducao();
-            ['malte','adjunto','lupulo','levedura','especiaria'].forEach(function(t){ popularSelectInsumoPorTipo(t); });
+            ['malte','adjunto','lupulo','levedura','especiaria','coadjuvante','aditivo'].forEach(function(t){ popularSelectInsumoPorTipo(t); });
             popularSelectLupuloProducao();
             popularSelectLeveduraProducao();
             if (elTanque && valTanque) elTanque.value = valTanque;
@@ -5092,6 +5092,170 @@ function _r8CustoLitroLote(lote) {
     if (!vol) return 0;
     return _calcularCustoLote(lote).custoTotal / vol;
 }
+// ─── TRANSFERÊNCIA ENTRE LOTES (Produto Acabado) ─────────────────────────────
+// Passa parte do volume de um barril de um lote para um barril de outro lote,
+// com ficha própria para o novo lote. NÃO dá baixa automática de insumo: o
+// aditivo/coadjuvante/especiaria adicionado é baixado manualmente pela tela
+// de Baixa/Descarte. A ficha do novo lote fica marcada com semBaixaAutomatica,
+// para a reconciliação de baixas nunca lançar nada nela.
+// Barris que NÃO podem receber transferência: têm saldo em Câmara Fria,
+// estão em uso ou aguardando sanitização.
+window._r8TrfBarrisOcupados = function() {
+    var ocup = {};
+    (dadosERP.produtosAcabados || []).forEach(function(p) {
+        if ((parseFloat(p.camaraFria) || 0) > 0 && p.embalagemCodigo) ocup[p.embalagemCodigo] = true;
+    });
+    (dadosERP.barris || []).forEach(function(b) {
+        if (b.status === 'Em Uso' || b.status === 'Aguardando Sanitização') ocup[b.codigo] = true;
+    });
+    return ocup;
+};
+window._r8TrfBarrisDoLote = function() {
+    var lote = (document.getElementById('trfLoteOrig') || {}).value;
+    var sel = document.getElementById('trfOrigem');
+    if (!sel) return;
+    var ps = (dadosERP.produtosAcabados || []).filter(function(p) { return p.lote === lote && (parseFloat(p.camaraFria) || 0) > 0; });
+    sel.innerHTML = ps.map(function(p) {
+        return '<option value="' + R8.esc(_r8ChaveProduto(p)) + '">' + R8.esc(_r8RotuloEmbalagem(p)) + ' (' + (parseFloat(p.camaraFria) || 0).toFixed(2) + ' L)</option>';
+    }).join('');
+};
+window.abrirTransferenciaLote = function() {
+    var pas = (dadosERP.produtosAcabados || []).filter(function(p) { return (parseFloat(p.camaraFria) || 0) > 0; });
+    if (!pas.length) { R8.toast.aviso('Não há barril com saldo em Câmara Fria para transferir.'); return; }
+    var ocupTrf = window._r8TrfBarrisOcupados();
+    var barrisLivres = (dadosERP.barris || []).filter(function(b) { return b.status === 'Disponível' && !ocupTrf[b.codigo]; });
+    if (!barrisLivres.length) { R8.toast.aviso('Não há barril disponível para receber a transferência.'); return; }
+    var lotesOrig = [];
+    pas.forEach(function(p) { if (lotesOrig.indexOf(p.lote) === -1) lotesOrig.push(p.lote); });
+    var optOrig = lotesOrig.map(function(l) { return '<option value="' + R8.esc(l) + '">' + R8.esc(l) + '</option>'; }).join('');
+    var optBar = barrisLivres.map(function(b) {
+        return '<option value="' + R8.esc(b.codigo) + '">' + R8.esc(b.codigo) + ' - ' + R8.esc(b.descricao || '') + '</option>';
+    }).join('');
+    var vistos = {};
+    var optIns = '<option value="">Nenhum (não há adição)</option>' + (dadosERP.insumos || []).filter(function(i) {
+        if (['Aditivo', 'Coadjuvante', 'Especiaria'].indexOf(i.tipo) === -1 || vistos[i.codigo]) return false;
+        vistos[i.codigo] = true; return true;
+    }).map(function(i) {
+        return '<option value="' + R8.esc(i.codigo) + '">' + R8.esc(i.codigo) + ' - ' + R8.esc(i.descricao || '') + ' (' + R8.esc(i.tipo) + ')</option>';
+    }).join('');
+    var css = 'width:100%;padding:9px;border:1.5px solid #d6cfc4;border-radius:9px;font-size:14px;box-sizing:border-box;margin-top:4px';
+    var lab = 'display:block;margin-top:10px;font-size:12px;font-weight:700;color:#2c1810';
+    var html = '<div id="_r8ModalTransf" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9000;display:flex;align-items:center;justify-content:center;padding:16px">'
+        + '<div style="background:#fff;border-radius:16px;width:100%;max-width:440px;max-height:92vh;overflow:auto;padding:18px 18px 14px;box-sizing:border-box">'
+        + '<h3 style="margin:0 0 6px;font-family:\'Bebas Neue\',sans-serif;font-weight:400;font-size:26px;color:#2c1810">Transferir entre lotes</h3>'
+        + '<p style="margin:0;font-size:12px;color:#64748b">O volume sai do barril de origem e entra em um barril do novo lote. Nenhum insumo é baixado automaticamente.</p>'
+        + '<label style="' + lab + '">Lote de origem</label><select id="trfLoteOrig" onchange="window._r8TrfBarrisDoLote()" style="' + css + '">' + optOrig + '</select>'
+        + '<label style="' + lab + '">Barril de origem (envasado neste lote)</label><select id="trfOrigem" style="' + css + '"></select>'
+        + '<label style="' + lab + '">Volume a transferir (L)</label><input type="number" step="0.01" min="0" id="trfVolume" placeholder="-" style="' + css + '">'
+        + '<label style="' + lab + '">Novo lote</label><input type="text" id="trfLote" placeholder="Código do novo lote" style="' + css + '">'
+        + '<label style="' + lab + '">Novo produto (estilo)</label><input type="text" id="trfEstilo" placeholder="Ex.: IPA com tangerina" style="' + css + '">'
+        + '<label style="' + lab + '">Barril de destino</label><select id="trfBarril" style="' + css + '">' + optBar + '</select>'
+        + '<label style="' + lab + '">Adição feita (registro na ficha, baixa manual)</label><select id="trfInsumo" style="' + css + '">' + optIns + '</select>'
+        + '<label style="' + lab + '">Quantidade da adição (g ou ml)</label><input type="number" step="0.1" min="0" id="trfInsumoQtd" placeholder="-" style="' + css + '">'
+        + '<label style="' + lab + '">Observação</label><input type="text" id="trfObs" placeholder="-" style="' + css + '">'
+        + '<div style="display:flex;gap:8px;margin-top:16px">'
+        + '<button type="button" onclick="window.confirmarTransferenciaLote()" style="flex:1;padding:12px;background:#c49a2b;color:#fff;border:none;border-radius:10px;font-weight:700;cursor:pointer"><i class="fas fa-check-circle"></i> Transferir</button>'
+        + '<button type="button" onclick="document.getElementById(\'_r8ModalTransf\').remove()" style="flex:1;padding:12px;background:#e2e8f0;color:#334155;border:none;border-radius:10px;font-weight:700;cursor:pointer">Cancelar</button>'
+        + '</div></div></div>';
+    var antigo = document.getElementById('_r8ModalTransf'); if (antigo) antigo.remove();
+    document.body.insertAdjacentHTML('beforeend', html);
+    window._r8TrfBarrisDoLote();
+};
+
+window.confirmarTransferenciaLote = function() {
+    var g = function(id) { var el = document.getElementById(id); return el ? el.value : ''; };
+    var chave = g('trfOrigem');
+    var vol = parseFloat(g('trfVolume'));
+    var loteNovo = String(g('trfLote') || '').trim();
+    var estiloNovo = String(g('trfEstilo') || '').trim();
+    var barrilDest = g('trfBarril');
+    var insCod = g('trfInsumo');
+    var insQtd = parseFloat(g('trfInsumoQtd')) || 0;
+    var obs = g('trfObs');
+    var p = _r8ProdutoPorChave(chave);
+    if (!p) { R8.toast.aviso('Selecione o barril de origem.'); return; }
+    var saldo = parseFloat(p.camaraFria) || 0;
+    if (!(vol > 0)) { R8.toast.aviso('Informe o volume a transferir.'); return; }
+    if (vol > saldo + 0.001) { R8.toast.erro('Volume maior que o saldo do barril de origem (' + saldo.toFixed(2) + ' L).'); return; }
+    if (loteNovo.length < 2) { R8.toast.aviso('Informe o código do novo lote.'); return; }
+    if (loteNovo === p.lote) { R8.toast.aviso('O novo lote precisa ser diferente do lote de origem.'); return; }
+    var loteUsado = (dadosERP.produtosAcabados || []).some(function(x) { return x.lote === loteNovo; })
+        || (dadosERP.fichasTecnicas || []).some(function(f) { return f.lote === loteNovo; });
+    if (loteUsado) { R8.toast.erro('O lote ' + loteNovo + ' já existe. Use outro código.'); return; }
+    if (!estiloNovo) { R8.toast.aviso('Informe o novo produto (estilo).'); return; }
+    var barril = (dadosERP.barris || []).find(function(b) { return b.codigo === barrilDest; });
+    if (!barril || barril.status !== 'Disponível' || window._r8TrfBarrisOcupados()[barrilDest]) { R8.toast.aviso('Selecione um barril de destino disponível (sem saldo e fora de uso).'); return; }
+    if (barrilDest === p.embalagemCodigo) { R8.toast.aviso('O barril de destino não pode ser o mesmo da origem.'); return; }
+
+    var hoje = (typeof window._r8HojeISO === 'function') ? window._r8HojeISO() : new Date().toISOString().slice(0, 10);
+    var agora = (typeof obterDataHora === 'function') ? obterDataHora() : hoje;
+    var loteOrig = p.lote, barrilOrig = p.embalagemCodigo || '', tipoOrig = p.tipoEmbalagem || '';
+    var volOrig = saldo;
+
+    // 1) Origem: sai o volume
+    p.camaraFria = parseFloat((saldo - vol).toFixed(2));
+    p.status = p.camaraFria === 0 ? 'Esgotado' : (p.camaraFria < 10 ? 'Baixo' : 'Disponível');
+    if (p.camaraFria === 0 && barrilOrig) {
+        var bo = (dadosERP.barris || []).find(function(x) { return x.codigo === barrilOrig; });
+        if (bo && bo.status === 'Em Uso') {
+            bo.status = 'Aguardando Sanitização';
+            if (!dadosERP.recebimentosBarris) dadosERP.recebimentosBarris = [];
+            dadosERP.recebimentosBarris.push({ codigo: bo.codigo, lote: loteOrig, data: hoje, motivo: 'Transferência para lote ' + loteNovo });
+        }
+    }
+
+    // 2) Destino: novo lote no barril escolhido
+    if (!dadosERP.produtosAcabados) dadosERP.produtosAcabados = [];
+    dadosERP.produtosAcabados.push({
+        lote: loteNovo, estilo: estiloNovo, tipoEmbalagem: barril.tipo || 'Barril', embalagemCodigo: barrilDest,
+        dataEnvase: hoje, quantidade: vol, localizacao: 'Câmara Fria', status: 'Disponível',
+        pdv: 0, camaraFria: vol, taps: 0, loteOrigem: loteOrig
+    });
+    barril.status = 'Em Uso';
+    barril.loteAtual = loteNovo;
+
+    // 3) Ficha própria do novo lote: cópia da ficha de origem + adição registrada
+    var fichaOrig = (dadosERP.fichasTecnicas || []).find(function(f) { return f.lote === loteOrig; });
+    var ficha = fichaOrig ? JSON.parse(JSON.stringify(fichaOrig)) : { insumos: [], lupulos: [], leveduras: [] };
+    ficha.id = R8.novoId();
+    ficha.lote = loteNovo;
+    ficha.estilo = estiloNovo;
+    ficha.statusLote = 'finalizado';
+    ficha.envases = [];
+    ficha.tanque = '';
+    ficha.legado = false;
+    ficha.dataProducao = hoje;
+    ficha.semBaixaAutomatica = true;
+    ficha.transferencia = { de: loteOrig, volume: vol, barrilOrigem: barrilOrig, barrilDestino: barrilDest, data: hoje, obs: obs };
+    if (insCod) {
+        var insRef = (dadosERP.insumos || []).find(function(i) { return i.codigo === insCod; });
+        if (!ficha.insumos) ficha.insumos = [];
+        ficha.insumos.push({ codigo: insCod, descricao: insRef ? insRef.descricao : '', tipo: insRef ? insRef.tipo : '', quantidade: insQtd, unidade: insRef ? insRef.unidade : '', adicionadoNaTransferencia: true });
+    }
+    dadosERP.fichasTecnicas.push(ficha);
+
+    // 4) Razão de movimentações: saída na origem, entrada no destino (sem insumo)
+    if (!dadosERP.movimentacoesEstoque) dadosERP.movimentacoesEstoque = [];
+    dadosERP.movimentacoesEstoque.push({
+        id: Date.now() + '_trf_out', data: agora, tipo: 'saida', produto: p.estilo || '', lote: loteOrig,
+        tipoEmbalagem: tipoOrig, embalagemCodigo: barrilOrig, quantidade: vol, unidade: 'L',
+        origem: 'Transferência para lote ' + loteNovo, destino: loteNovo, obs: obs,
+        saldoAnterior: volOrig, saldoAtual: p.camaraFria
+    });
+    dadosERP.movimentacoesEstoque.push({
+        id: Date.now() + '_trf_in', data: agora, tipo: 'entrada', produto: estiloNovo, lote: loteNovo,
+        tipoEmbalagem: barril.tipo || 'Barril', embalagemCodigo: barrilDest, quantidade: vol, unidade: 'L',
+        origem: 'Transferência do lote ' + loteOrig, obs: obs, saldoAnterior: 0, saldoAtual: vol
+    });
+
+    if (typeof registrarAuditoria === 'function') registrarAuditoria('Transferência', 'criar', loteOrig + ' → ' + loteNovo + ': ' + vol + ' L (' + barrilOrig + ' → ' + barrilDest + ')');
+    salvarDadosFirebase();
+    var fecha = document.getElementById('_r8ModalTransf'); if (fecha) fecha.remove();
+    var aviso = insCod ? ' Dê baixa manual da adição em Estoque > Baixa/Descarte.' : '';
+    R8.toast.ok('Transferido ' + vol.toFixed(2) + ' L para o lote ' + loteNovo + '.' + aviso);
+    if (typeof window.irParaTelaERP === 'function') window.irParaTelaERP('telaEstoqueProdutoAcabado');
+};
+
 window.confirmarBaixaProdutoAcabado = function() {
     var chave = document.getElementById('baixaProdutoLote')?.value;
     var qtd = parseFloat(document.getElementById('baixaProdutoQtd')?.value);
@@ -7632,7 +7796,7 @@ window.irParaTelaERP = function(id) {
         try { popularSelectTanqueProducao(); } catch(e) {}
         try { popularSelectEstiloProducao(); } catch(e) {}
         try { popularSelectAguaOrigemProducao(); } catch(e) {}
-        try { ['malte','adjunto','lupulo','levedura','especiaria'].forEach(function(t) { popularSelectInsumoPorTipo(t); }); } catch(e) {}
+        try { ['malte','adjunto','lupulo','levedura','especiaria','coadjuvante','aditivo'].forEach(function(t) { popularSelectInsumoPorTipo(t); }); } catch(e) {}
         try { popularSelectLupuloProducao(); } catch(e) {}
         try { popularSelectLeveduraProducao(); } catch(e) {}
         // Rede de segurança: se os dados do Firebase ainda não tinham chegado na 1ª tentativa, repopula após 1s
@@ -7646,7 +7810,7 @@ window.irParaTelaERP = function(id) {
             try { popularSelectTanqueProducao(); } catch(e) {}
             try { popularSelectEstiloProducao(); } catch(e) {}
             try { popularSelectAguaOrigemProducao(); } catch(e) {}
-            try { ['malte','adjunto','lupulo','levedura','especiaria'].forEach(function(t) { popularSelectInsumoPorTipo(t); }); } catch(e) {}
+            try { ['malte','adjunto','lupulo','levedura','especiaria','coadjuvante','aditivo'].forEach(function(t) { popularSelectInsumoPorTipo(t); }); } catch(e) {}
             try { popularSelectLupuloProducao(); } catch(e) {}
             try { popularSelectLeveduraProducao(); } catch(e) {}
             if (elTanque && valTanque) elTanque.value = valTanque;
@@ -7678,11 +7842,9 @@ window.fecharFormERP = function(id) {
         window._insLaudoURL  = '';
         window._insLaudoTipo = '';
         var lbl = document.getElementById('insLaudoLabel');
-        var prv = document.getElementById('insLaudoPreview');
         var clr = document.getElementById('insLaudoClearBtn');
         var fil = document.getElementById('insLaudoFile');
         if(lbl) lbl.textContent = 'Selecionar arquivo...';
-        if(prv) prv.style.display = 'none';
         if(clr) clr.style.display = 'none';
         if(fil) fil.value = '';
     }
@@ -7728,7 +7890,7 @@ function salvarInsumoERP() {
     var tipo   = document.getElementById('insTipo')?.value;
     var qtd    = parseFloat(document.getElementById('insQtd')?.value) || 0;
     var valor  = R8.valorMoeda(document.getElementById('insValor'));
-    var unid   = (tipo === 'Malte' || tipo === 'Adjunto') ? 'kg' : 'g';
+    var unid   = (tipo === 'Coadjuvante' || tipo === 'Aditivo') ? (document.getElementById('insUnidadeCoad')?.value || 'g') : ((tipo === 'Malte' || tipo === 'Adjunto') ? 'kg' : 'g');
     var obj = {
         codigo:     cod,
         lote:       document.getElementById('insLote')?.value || '',
@@ -7920,6 +8082,7 @@ window.editarInsumoERP=function(i){
     document.getElementById('insCodigo').value=ins.codigo;
     document.getElementById('insLote').value=ins.lote||'';
     document.getElementById('insTipo').value=ins.tipo;
+    if((ins.tipo==='Coadjuvante'||ins.tipo==='Aditivo')&&document.getElementById('insUnidadeCoad'))document.getElementById('insUnidadeCoad').value=ins.unidade||'g';
     atualizarCampoInsumoERP();
     document.getElementById('insDescricao').value=ins.descricao;
     document.getElementById('insProdutor').value=ins.produtor||'';
@@ -7936,17 +8099,12 @@ window.editarInsumoERP=function(i){
     window._insLaudoURL  = ins.laudoURL  || '';
     window._insLaudoTipo = ins.laudoTipo || '';
     var lbl = document.getElementById('insLaudoLabel');
-    var prv = document.getElementById('insLaudoPreview');
-    var prvNm = document.getElementById('insLaudoPreviewName');
     var clrBtn = document.getElementById('insLaudoClearBtn');
     if(ins.laudoNome){
         if(lbl) lbl.textContent = ins.laudoNome;
-        if(prv){ prv.style.display='flex'; }
-        if(prvNm) prvNm.textContent = ins.laudoNome;
         if(clrBtn) clrBtn.style.display='inline-block';
     } else {
         if(lbl) lbl.textContent = 'Selecionar arquivo...';
-        if(prv) prv.style.display='none';
         if(clrBtn) clrBtn.style.display='none';
     }
     mostrarFormERP('formInsumo');
@@ -7976,7 +8134,7 @@ window.excluirInsumoERP=function(i){
         }
     });
 };
-window.atualizarCampoInsumoERP=function(){let t=document.getElementById('insTipo')?.value;let lq=document.getElementById('lblQuantidade'),lv=document.getElementById('lblValor');if(lq)lq.textContent=(t==='Malte'||t==='Adjunto')?'Quantidade (kg)':'Quantidade (g)';if(lv)lv.textContent='Valor (R$/'+(t==='Malte'||t==='Adjunto'?'kg':'g')+')';};
+window.atualizarCampoInsumoERP=function(){let t=document.getElementById('insTipo')?.value;let ehCoad=(t==='Coadjuvante'||t==='Aditivo');let campoU=document.getElementById('campoUnidadeCoad');if(campoU)campoU.style.display=ehCoad?'':'none';let u=ehCoad?(document.getElementById('insUnidadeCoad')?.value||'g'):((t==='Malte'||t==='Adjunto')?'kg':'g');let lq=document.getElementById('lblQuantidade'),lv=document.getElementById('lblValor');if(lq)lq.textContent='Quantidade ('+u+')';if(lv)lv.textContent='Valor (R$/'+u+')';};
 window.salvarInsumoERP=salvarInsumoERP;
 
 // ═══════════════════════════════════════════════════════
@@ -8387,7 +8545,7 @@ window._r8ClearRevisaoLaudo = function(btn, idx) {
 function _r8RenderizarRevisaoNFe(dados) {
     window._r8RevisaoLaudos = {};
     window._r8RevisaoItensAtual = dados.itens || [];
-    var tiposDisponiveis = ['Malte', 'Levedura', 'Lúpulos', 'Adjunto', 'Especiaria'];
+    var tiposDisponiveis = ['Malte', 'Levedura', 'Lúpulos', 'Adjunto', 'Especiaria', 'Coadjuvante', 'Aditivo'];
     window._r8OrigemImportacaoAtual = dados.origemLabel || 'Importação NF-e';
     window._r8RevisaoNotaAtual = dados.nota || {};
     var overlay = document.getElementById('_r8OverlayRevisaoNFe');
@@ -8838,7 +8996,7 @@ function popularSelectInsumoPorTipo(tipo){let mapa={malte:'malte',adjunto:'adjun
         let saldo=_r8SaldoAgrupadoInsumo(i.codigo);
         let alerta=saldo<5?' ⚠':'';
         return '<option value="'+R8.esc(i.codigo)+'">'+R8.esc(i.codigo)+' - '+R8.esc(i.descricao)+' (saldo: '+saldo.toFixed(2)+' '+R8.esc(i.unidade||'')+alerta+')</option>';
-    }).join(''):'<option value="">Nenhum '+tipo+' cadastrado</option>';}
+    }).join(''):'<option value="">Nenhum '+tipo+' cadastrado</option>';if(chave==='coadjuvante'&&window._r8AtualizaLabelCoadProducao)window._r8AtualizaLabelCoadProducao();if(chave==='aditivo'&&window._r8AtualizaLabelAditivoProducao)window._r8AtualizaLabelAditivoProducao();}
 function popularSelectLupuloProducao(){let s=document.getElementById('lupuloSelectProducao');if(!s)return;let lups=dadosERP.insumos.filter(function(i){return i.tipo==='Lúpulos';});s.innerHTML=lups.length?'<option value="">Selecione</option>'+lups.map(function(i){return'<option value="'+R8.esc(i.codigo)+'">'+R8.esc(i.codigo)+' - '+R8.esc(i.descricao)+'</option>';}).join(''):'<option value="">Nenhum lúpulo cadastrado</option>';}
 function popularSelectLeveduraProducao(){let s=document.getElementById('leveduraSelectProducao');if(!s)return;let levs=dadosERP.insumos.filter(function(i){return i.tipo==='Levedura';});s.innerHTML=levs.length?'<option value="">Selecione</option>'+levs.map(function(i){return'<option value="'+R8.esc(i.codigo)+'">'+R8.esc(i.descricao)+'</option>';}).join(''):'<option value="">Nenhuma levedura cadastrada</option>';}
 
@@ -8889,6 +9047,8 @@ window._onAguaProdOrigemChange=function(){
     }
 };
 
+window._r8AtualizaLabelAditivoProducao=function(){var s=document.getElementById('insumoAditivoSelectProducao');var b=(s&&s.value)?dadosERP.insumos.find(function(i){return i.codigo===s.value;}):null;var l=document.getElementById('lblQtdAditivoProducao');if(l)l.textContent='Quantidade ('+((b&&b.unidade)||'g')+') *';};
+window._r8AtualizaLabelCoadProducao=function(){var s=document.getElementById('insumoCoadjuvanteSelectProducao');var b=(s&&s.value)?dadosERP.insumos.find(function(i){return i.codigo===s.value;}):null;var l=document.getElementById('lblQtdCoadProducao');if(l)l.textContent='Quantidade ('+((b&&b.unidade)||'g')+') *';};
 window.salvarInsumoCategoriaERP=function(cat){let id='insumo'+cat.charAt(0).toUpperCase()+cat.slice(1)+'SelectProducao';let s=document.getElementById(id);let qtd=parseFloat(document.getElementById('insumo'+cat.charAt(0).toUpperCase()+cat.slice(1)+'QtdProducao')?.value);if(!s||!s.value||isNaN(qtd)||qtd<=0){R8.toast.aviso('Selecione um insumo e informe quantidade válida.');return;}let base=dadosERP.insumos.find(function(i){return i.codigo===s.value;});if(!base){R8.toast.erro('Insumo não encontrado.');return;}let saldoDisp=_r8SaldoAgrupadoInsumo(s.value);if(qtd>saldoDisp){R8.toast.aviso('Atenção: saldo atual de '+base.descricao+' é '+saldoDisp.toFixed(2)+' '+(base.unidade||'')+' — quantidade informada é maior. Será possível salvar, mas o estoque pode ficar negativo/insuficiente.');}let item={codigo:s.value,descricao:base.descricao,tipo:base.tipo,quantidade:qtd,unidade:base.unidade,momento:cat,tipoCategoria:cat};if(_editSecaoProducao==='listaInsumosProducao'&&_editIdxProducao!==null){window.insumosAdicionadosProducao[_editIdxProducao]=item;_editIdxProducao=null;_editSecaoProducao=null;}else{window.insumosAdicionadosProducao.push(item);}atualizarListaInsumosProducao();fecharFormERP('formInsumo'+cat.charAt(0).toUpperCase()+cat.slice(1)+'Producao');document.getElementById('insumo'+cat.charAt(0).toUpperCase()+cat.slice(1)+'QtdProducao').value='';};
 // ── HELPERS EDITAR/EXCLUIR ETAPAS PRODUÇÃO ──
 var _editIdxProducao = null;
@@ -8978,7 +9138,7 @@ window._editarItemProducao = function(containerId, i) {
         // fonte preferencial, mas se estiver ausente/incorreta (dado legado),
         // deriva a categoria a partir do tipo real do insumo (campo confiável,
         // vindo do Cadastro) em vez de falhar silenciosamente.
-        var mapaTipoCat = {'malte':'malte','adjunto':'adjunto','lúpulos':'lupulo','lupulo':'lupulo','levedura':'levedura','especiaria':'especiaria'};
+        var mapaTipoCat = {'malte':'malte','adjunto':'adjunto','lúpulos':'lupulo','lupulo':'lupulo','levedura':'levedura','especiaria':'especiaria','coadjuvante':'coadjuvante','aditivo':'aditivo'};
         var tipo = (item.tipoCategoria||'').toLowerCase();
         if (!mapaTipoCat[tipo]) tipo = mapaTipoCat[(item.tipo||'').toLowerCase()] || 'malte';
         else tipo = mapaTipoCat[tipo];
@@ -9350,6 +9510,7 @@ window.corrigirDuplicidadeBaixaInsumos = function() {
     dadosERP.fichasTecnicas.forEach(function(ficha) {
         if (!ficha.lote) return;
         if (ficha.legado) return; // lote legado nunca baixa estoque
+        if (ficha.semBaixaAutomatica) return; // transferência entre lotes: baixa só manual
         var corretoMapa = _acumularCodigosDeFicha(ficha); // Campo Insumos (apenas)
 
         var atualMapa = {};
@@ -10230,7 +10391,9 @@ var R8_TIPO_INSUMO_STYLE = {
     Lúpulo:      {icone:'fa-seedling',      grad:'linear-gradient(135deg,#d1fae5,#a7f3d0)', cor:'#065f46'},
     Levedura:    {icone:'fa-bacteria',      grad:'linear-gradient(135deg,#ede9fe,#ddd6fe)', cor:'#5b21b6'},
     Adjunto:     {icone:'fa-flask',         grad:'linear-gradient(135deg,#dbeafe,#bfdbfe)', cor:'#1e40af'},
-    Especiaria:  {icone:'fa-mortar-pestle', grad:'linear-gradient(135deg,#fce7f3,#fbcfe8)', cor:'#9d174d'}
+    Especiaria:  {icone:'fa-mortar-pestle', grad:'linear-gradient(135deg,#fce7f3,#fbcfe8)', cor:'#9d174d'},
+    Coadjuvante: {icone:'fa-jar', grad:'linear-gradient(135deg,#ecfeff,#cffafe)', cor:'#155e75'},
+    Aditivo:     {icone:'fa-vial', grad:'linear-gradient(135deg,#fefce8,#fef08a)', cor:'#854d0e'}
 };
 function _r8EstiloTipoInsumo(tipo) {
     return R8_TIPO_INSUMO_STYLE[tipo] || {icone:'fa-flask', grad:'linear-gradient(135deg,#f1f5f9,#e2e8f0)', cor:'#475569'};
@@ -11038,7 +11201,7 @@ window.excluirEnvase=function(i){confirmarAcao({titulo:'Excluir registro de enva
     registrarAuditoria('Envase', 'excluir', 'Lote: '+((reg&&reg.lote)||'—')+(reg&&reg.tipo?' — '+reg.tipo:'')+(reg&&reg.volumeTotal?' — '+reg.volumeTotal+'L':''));
 }});};
 window.calcularVolumeTotalEnvaseERP=function(){let q=parseFloat(document.getElementById('envaseQuantidade')?.value)||0;let v=parseFloat(document.getElementById('envaseVolumeUnitario')?.value)||0;document.getElementById('envaseVolumeTotal').value=q*v;};
-window.calcularVolumeTotalEnvaseProducaoERP=function(){let q=parseFloat(document.getElementById('producaoEnvaseQuantidade')?.value)||0;let v=parseFloat(document.getElementById('producaoEnvaseVolumeUnitario')?.value)||0;document.getElementById('producaoEnvaseVolume').value=(q*v)||'';};
+window.calcularVolumeTotalEnvaseProducaoERP=function(){let q=parseFloat(document.getElementById('producaoEnvaseQuantidade')?.value)||0;let v=parseFloat(document.getElementById('producaoEnvaseVolumeUnitario')?.value)||0;document.getElementById('producaoEnvaseVolume').value=(q*v)?parseFloat((q*v).toFixed(2)):'';};
 window._envaseEmbCache = [];
 window.popularSelectEnvaseEmbalagem = function(incluirCodigoExtra){
     var sel = document.getElementById('producaoEnvaseEmbalagemSelect');
@@ -11051,7 +11214,9 @@ window.popularSelectEnvaseEmbalagem = function(incluirCodigoExtra){
         if(bloqueado) return; // bloqueado — só reaparece após sanitização (se aguardando) ou Recebimento
         cache.push({codigo:b.codigo, descricao:b.descricao||b.tipo||b.codigo, tipoDetalhe:b.tipo||'', capacidade:b.capacidade||'', categoria:'Barril', emEdicao:(b.status==='Em Uso'&&b.codigo===incluirCodigoExtra)});
     });
-    cache.push({codigo:'', descricao:'Lata (genérico — sem cadastro)', tipoDetalhe:'Lata', capacidade:'', categoria:'Lata'});
+    [{d:'Garrafa 0,5 L',c:'Garrafa',v:'0,5'},{d:'Garrafa 0,75 L',c:'Garrafa',v:'0,75'},{d:'Growler PET 0,5 L',c:'Growler PET',v:'0,5'},{d:'Growler PET 1 L',c:'Growler PET',v:'1'},{d:'Lata 0,473 L',c:'Lata',v:'0,473'}].forEach(function(g){
+        cache.push({codigo:'', descricao:g.d, tipoDetalhe:g.c, capacidade:g.v, categoria:g.c});
+    });
     window._envaseEmbCache = cache;
     var opts = ['<option value="">— Selecione —</option>'];
     cache.forEach(function(c,i){
@@ -18082,13 +18247,9 @@ window._onInsLaudoSelect = function(input) {
 
         // Atualizar UI do form
         var lbl   = document.getElementById('insLaudoLabel');
-        var prv   = document.getElementById('insLaudoPreview');
-        var prvNm = document.getElementById('insLaudoPreviewName');
         var clr   = document.getElementById('insLaudoClearBtn');
 
         if (lbl)  lbl.textContent = file.name;
-        if (prvNm) prvNm.textContent = file.name;
-        if (prv)  { prv.style.display = 'flex'; }
         if (clr)  clr.style.display = 'inline-block';
     };
     reader.readAsDataURL(file);
@@ -18103,10 +18264,8 @@ window._clearInsLaudo = function() {
     var fileEl = document.getElementById('insLaudoFile');
     if (fileEl) fileEl.value = '';
     var lbl   = document.getElementById('insLaudoLabel');
-    var prv   = document.getElementById('insLaudoPreview');
     var clr   = document.getElementById('insLaudoClearBtn');
     if (lbl) lbl.textContent = 'Selecionar arquivo...';
-    if (prv) prv.style.display = 'none';
     if (clr) clr.style.display = 'none';
 };
 
@@ -18815,7 +18974,7 @@ if(document.readyState === 'loading'){
                  lista de resultado real, que ficava escondida na aba Saldo. -->
             <div class="filtros-estoque">
                 <div class="campo-linha"><label>Buscar</label><div class="busca-wrap"><input type="text" id="buscaEstoque" placeholder="Código, descrição..." oninput="atualizarTabelaEstoqueAgrupada()" autocomplete="off"><div class="busca-dropdown" id="ddBuscaEstoque"></div></div></div>
-                <div class="campo-linha"><label>Tipo</label><select id="filtroTipoEstoqueNovo" onchange="atualizarTabelaEstoqueAgrupada()"><option value="">Todos</option><option>Malte</option><option>Lúpulos</option><option>Levedura</option><option>Adjunto</option><option>Especiaria</option></select></div>
+                <div class="campo-linha"><label>Tipo</label><select id="filtroTipoEstoqueNovo" onchange="atualizarTabelaEstoqueAgrupada()"><option value="">Todos</option><option>Malte</option><option>Lúpulos</option><option>Levedura</option><option>Adjunto</option><option>Especiaria</option><option>Coadjuvante</option><option>Aditivo</option></select></div>
                 <div class="filtro-checkbox"><input type="checkbox" id="estoqueBaixoCheck" onchange="atualizarTabelaEstoqueAgrupada()"><label for="estoqueBaixoCheck">Baixo estoque</label></div>
             </div>
             <div id="saldoPorLoteInsumos"></div>
@@ -18824,6 +18983,7 @@ if(document.readyState === 'loading'){
 
     <div id="telaEstoqueProdutoAcabado" class="tela">
         <div class="hdr"><div class="hdr-linha1"><button class="btn-tela-voltar" onclick="irParaTelaERP('telaGestao')"><i class="fas fa-arrow-left"></i> Voltar</button><h2>Produto Acabado</h2></div><div class="hdr-acoes"><button class="btn-tela-pdf" onclick="gerarPDFProdutoAcabado()"><i class="fas fa-file-pdf"></i> PDF</button></div></div>
+        <button type="button" onclick="window.abrirTransferenciaLote()" style="width:100%;margin:0 0 8px;padding:10px;background:#f0fdf4;border:1.5px solid #10b981;color:#065f46;border-radius:9px;font-size:12.5px;font-weight:700;cursor:pointer"><i class="fas fa-right-left"></i> Transferir entre lotes</button>
         <button type="button" onclick="var p=document.getElementById('paFerramentasAvancadas');var seta=document.getElementById('paFerramentasSeta');var aberto=p.style.display==='block';p.style.display=aberto?'none':'block';seta.style.transform=aberto?'rotate(0deg)':'rotate(180deg)';" style="width:100%;margin:0 0 8px;padding:10px;background:#f5f2ec;border:1.5px solid #e0d8ce;color:#6b5f4f;border-radius:9px;font-size:12.5px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px"><i class="fas fa-toolbox"></i> Ferramentas Avançadas <i id="paFerramentasSeta" class="fas fa-chevron-down" style="transition:transform .2s"></i></button>
         <div id="paFerramentasAvancadas" style="display:none">
         <button type="button" onclick="window._r8LimparMovimentacoesOrfas()" style="width:100%;margin:0 0 8px;padding:10px;background:#fef3c7;border:1.5px solid #d97706;color:#92400e;border-radius:9px;font-size:12.5px;font-weight:700;cursor:pointer" title="Remove só as movimentações de lotes que já não existem mais em nenhum lugar do sistema (ex.: sobras de exclusões antigas), sem mexer em nenhum lote válido"><i class="fas fa-eraser"></i> Limpar Movimentações Órfãs (lotes já excluídos)</button>
@@ -19028,12 +19188,16 @@ if(document.readyState === 'loading'){
             <button class="btn-insumo" onclick="mostrarFormERP('formInsumoLupuloProducao')"><i class="fas fa-plus-circle"></i> Lúpulo</button>
             <button class="btn-insumo" onclick="mostrarFormERP('formInsumoLeveduraProducao')"><i class="fas fa-plus-circle"></i> Levedura</button>
             <button class="btn-insumo" onclick="mostrarFormERP('formInsumoEspeciariaProducao')"><i class="fas fa-plus-circle"></i> Especiaria</button>
+            <button class="btn-insumo" onclick="mostrarFormERP('formInsumoCoadjuvanteProducao')"><i class="fas fa-plus-circle"></i> Coadjuvante</button>
+            <button class="btn-insumo" onclick="mostrarFormERP('formInsumoAditivoProducao')"><i class="fas fa-plus-circle"></i> Aditivo</button>
         </div>
         <div id="formInsumoMalteProducao" class="form-flutuante"><h3>Adicionar Malte</h3><div class="campo-linha"><label>Selecione *</label><select id="insumoMalteSelectProducao"></select></div><div class="campo-linha"><label>Quantidade (kg)</label><input type="number" step="0.01" id="insumoMalteQtdProducao" placeholder="-"></div><button class="btn-salvar-insumo" onclick="salvarInsumoCategoriaERP('malte')"><i class="fas fa-check-circle"></i> Salvar</button><button class="btn-cancelar" onclick="fecharFormERP('formInsumoMalteProducao')"><i class="fas fa-times-circle"></i> Cancelar</button></div>
         <div id="formInsumoAdjuntoProducao" class="form-flutuante"><h3>Adicionar Adjunto</h3><div class="campo-linha"><label>Selecione *</label><select id="insumoAdjuntoSelectProducao"></select></div><div class="campo-linha"><label>Quantidade (kg)</label><input type="number" step="0.01" id="insumoAdjuntoQtdProducao" placeholder="-"></div><button class="btn-salvar-insumo" onclick="salvarInsumoCategoriaERP('adjunto')"><i class="fas fa-check-circle"></i> Salvar</button><button class="btn-cancelar" onclick="fecharFormERP('formInsumoAdjuntoProducao')"><i class="fas fa-times-circle"></i> Cancelar</button></div>
         <div id="formInsumoLupuloProducao" class="form-flutuante"><h3>Adicionar Lúpulo</h3><div class="campo-linha"><label>Selecione *</label><select id="insumoLupuloSelectProducao"></select></div><div class="campo-linha"><label>Quantidade (g)</label><input type="number" step="0.1" id="insumoLupuloQtdProducao" placeholder="-"></div><button class="btn-salvar-insumo" onclick="salvarInsumoCategoriaERP('lupulo')"><i class="fas fa-check-circle"></i> Salvar</button><button class="btn-cancelar" onclick="fecharFormERP('formInsumoLupuloProducao')"><i class="fas fa-times-circle"></i> Cancelar</button></div>
         <div id="formInsumoLeveduraProducao" class="form-flutuante"><h3>Adicionar Levedura</h3><div class="campo-linha"><label>Selecione *</label><select id="insumoLeveduraSelectProducao"></select></div><div class="campo-linha"><label>Quantidade (g)</label><input type="number" step="0.1" id="insumoLeveduraQtdProducao" placeholder="-"></div><button class="btn-salvar-insumo" onclick="salvarInsumoCategoriaERP('levedura')"><i class="fas fa-check-circle"></i> Salvar</button><button class="btn-cancelar" onclick="fecharFormERP('formInsumoLeveduraProducao')"><i class="fas fa-times-circle"></i> Cancelar</button></div>
         <div id="formInsumoEspeciariaProducao" class="form-flutuante"><h3>Adicionar Especiaria</h3><div class="campo-linha"><label>Selecione *</label><select id="insumoEspeciariaSelectProducao"></select></div><div class="campo-linha"><label>Quantidade (g)</label><input type="number" step="0.1" id="insumoEspeciariaQtdProducao" placeholder="-"></div><button class="btn-salvar-insumo" onclick="salvarInsumoCategoriaERP('especiaria')"><i class="fas fa-check-circle"></i> Salvar</button><button class="btn-cancelar" onclick="fecharFormERP('formInsumoEspeciariaProducao')"><i class="fas fa-times-circle"></i> Cancelar</button></div>
+        <div id="formInsumoCoadjuvanteProducao" class="form-flutuante"><h3>Adicionar Coadjuvante</h3><div class="campo-linha"><label>Selecione *</label><select id="insumoCoadjuvanteSelectProducao" onchange="_r8AtualizaLabelCoadProducao()"></select></div><div class="campo-linha"><label id="lblQtdCoadProducao">Quantidade (g) *</label><input type="number" step="0.1" id="insumoCoadjuvanteQtdProducao" placeholder="-"></div><button class="btn-salvar-insumo" onclick="salvarInsumoCategoriaERP('coadjuvante')"><i class="fas fa-check-circle"></i> Salvar</button><button class="btn-cancelar" onclick="fecharFormERP('formInsumoCoadjuvanteProducao')"><i class="fas fa-times-circle"></i> Cancelar</button></div>
+        <div id="formInsumoAditivoProducao" class="form-flutuante"><h3>Adicionar Aditivo</h3><div class="campo-linha"><label>Selecione *</label><select id="insumoAditivoSelectProducao" onchange="_r8AtualizaLabelAditivoProducao()"></select></div><div class="campo-linha"><label id="lblQtdAditivoProducao">Quantidade (g) *</label><input type="number" step="0.1" id="insumoAditivoQtdProducao" placeholder="-"></div><button class="btn-salvar-insumo" onclick="salvarInsumoCategoriaERP('aditivo')"><i class="fas fa-check-circle"></i> Salvar</button><button class="btn-cancelar" onclick="fecharFormERP('formInsumoAditivoProducao')"><i class="fas fa-times-circle"></i> Cancelar</button></div>
         <div id="listaInsumosProducao"></div>
         <div class="secao">Mosturação</div>
         <button class="btn-add-item" onclick="mostrarFormERP('formMosturaProducao')"><i class="fas fa-plus-circle"></i> Adicionar Etapa</button>
@@ -19345,7 +19509,7 @@ if(document.readyState === 'loading'){
 
     <div id="telaInsumos" class="tela">
         <div class="hdr"><div class="hdr-linha1"><button class="btn-tela-voltar" onclick="irParaTelaERP('telaSubCadastros')"><i class="fas fa-arrow-left"></i> Voltar</button><h2>Insumos</h2></div><div class="hdr-acoes"><button class="btn-tela-pdf" onclick="gerarPDFCadastro('insumos')"><i class="fas fa-file-pdf"></i> PDF</button></div></div>
-        <div id="formInsumo" class="form-flutuante"><h3>Novo Insumo</h3><div class="campo-linha"><label>Tipo</label><select id="insTipo" onchange="atualizarCampoInsumoERP()"><option>Malte</option><option>Levedura</option><option>Lúpulos</option><option>Adjunto</option><option>Especiaria</option></select></div><div class="campo-linha"><label>Descrição</label><input type="text" id="insDescricao" placeholder="-" oninput="document.getElementById('insCodigo').style.borderColor='';document.getElementById('insCodigo').style.background='';"></div><div class="campo-linha"><label>Código *</label><div style="display:flex;gap:6px;align-items:center"><input type="text" id="insCodigo" placeholder="-" style="flex:1" required><button type="button" onclick="_gerarCodInsumo()" style="flex-shrink:0;padding:8px 12px;background:#c49a2b;color:#fff;border:none;border-radius:9px;font-size:11px;cursor:pointer;font-weight:700;white-space:nowrap"><i class="fas fa-magic"></i> Auto</button></div></div><div class="campo-linha"><label>Lote</label><div class="busca-wrap"><input type="text" id="insLote" placeholder="-" autocomplete="off"><div class="busca-dropdown" id="ddInsLote"></div></div></div><div class="campo-linha"><label>Produtor</label><input type="text" id="insProdutor" placeholder="-"></div><div class="campo-linha"><label>Fornecedor</label><input type="text" id="insFornecedor" placeholder="-"></div><div class="linha-dupla"><div><label id="lblQuantidade">Quantidade (kg)</label><input type="number" step="0.01" id="insQtd" placeholder="-"></div><div><label id="lblValor">Valor (R$/kg)</label><input type="text" inputmode="decimal" id="insValor" placeholder="R$ 0,00" oninput="R8.mascaraMoeda(this)"></div></div><div class="campo-linha"><label>Validade</label><input type="date" id="insValidade" placeholder="-"></div><div class="campo-linha"><label>Obs</label><textarea id="insObs" rows="2" placeholder="-"></textarea></div><div class="campo-linha">
+        <div id="formInsumo" class="form-flutuante"><h3>Novo Insumo</h3><div class="campo-linha"><label>Tipo</label><select id="insTipo" onchange="atualizarCampoInsumoERP()"><option>Malte</option><option>Levedura</option><option>Lúpulos</option><option>Adjunto</option><option>Especiaria</option><option>Coadjuvante</option><option>Aditivo</option></select></div><div class="campo-linha" id="campoUnidadeCoad" style="display:none"><label>Unidade *</label><select id="insUnidadeCoad" onchange="atualizarCampoInsumoERP()"><option value="g">g (gramas)</option><option value="ml" selected>ml (mililitros)</option></select></div><div class="campo-linha"><label>Descrição</label><input type="text" id="insDescricao" placeholder="-" oninput="document.getElementById('insCodigo').style.borderColor='';document.getElementById('insCodigo').style.background='';"></div><div class="campo-linha"><label>Código *</label><div style="display:flex;gap:6px;align-items:center"><input type="text" id="insCodigo" placeholder="-" style="flex:1" required><button type="button" onclick="_gerarCodInsumo()" style="flex-shrink:0;padding:8px 12px;background:#c49a2b;color:#fff;border:none;border-radius:9px;font-size:11px;cursor:pointer;font-weight:700;white-space:nowrap"><i class="fas fa-magic"></i> Auto</button></div></div><div class="campo-linha"><label>Lote</label><div class="busca-wrap"><input type="text" id="insLote" placeholder="-" autocomplete="off"><div class="busca-dropdown" id="ddInsLote"></div></div></div><div class="campo-linha"><label>Produtor</label><input type="text" id="insProdutor" placeholder="-"></div><div class="campo-linha"><label>Fornecedor</label><input type="text" id="insFornecedor" placeholder="-"></div><div class="linha-dupla"><div><label id="lblQuantidade">Quantidade (kg)</label><input type="number" step="0.01" id="insQtd" placeholder="-"></div><div><label id="lblValor">Valor (R$/kg)</label><input type="text" inputmode="decimal" id="insValor" placeholder="R$ 0,00" oninput="R8.mascaraMoeda(this)"></div></div><div class="campo-linha"><label>Validade</label><input type="date" id="insValidade" placeholder="-"></div><div class="campo-linha"><label>Obs</label><textarea id="insObs" rows="2" placeholder="-"></textarea></div><div class="campo-linha">
             <label>Laudo de Análise <span style="font-size:10px;color:#94a3b8">(PDF, JPG ou PNG · max 5 MB)</span></label>
             <div style="display:flex;align-items:center;gap:8px">
                 <label style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;background:#eff6ff;border:1.5px dashed #3b82f6;border-radius:10px;cursor:pointer;font-size:12px;color:#1d4ed8;font-weight:600;flex:1">
@@ -19354,9 +19518,6 @@ if(document.readyState === 'loading'){
                     <input type="file" id="insLaudoFile" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="_onInsLaudoSelect(this)">
                 </label>
                 <button type="button" id="insLaudoClearBtn" style="display:none;background:none;border:none;color:#ef4444;cursor:pointer;font-size:16px" title="Remover laudo" onclick="_clearInsLaudo()"><i class="fas fa-times-circle"></i></button>
-            </div>
-            <div id="insLaudoPreview" style="display:none;margin-top:6px;padding:6px 10px;background:#f0fdf4;border:1px solid #10b981;border-radius:8px;font-size:11px;color:#065f46;display:flex;align-items:center;gap:6px">
-                <i class="fas fa-file-check"></i><span id="insLaudoPreviewName"></span>
             </div>
         </div>
         <button class="btn-salvar" onclick="salvarInsumoERP()"><i class="fas fa-save"></i> Salvar</button><button class="btn-cancelar" onclick="fecharFormERP('formInsumo')"><i class="fas fa-times-circle"></i> Cancelar</button></div>
@@ -19376,7 +19537,7 @@ if(document.readyState === 'loading'){
             <select id="filtroTipoInsumo" onchange="atualizarListaInsumosERP()"
                 style="height:36px;padding:0 8px;border:1.5px solid #e0d8ce;border-radius:9px;font-size:12px;font-family:inherit;background:#faf8f5;color:#2c1810">
                 <option value="">Todos os tipos</option>
-                <option>Malte</option><option>Levedura</option><option>Lúpulos</option><option>Adjunto</option><option>Especiaria</option>
+                <option>Malte</option><option>Levedura</option><option>Lúpulos</option><option>Adjunto</option><option>Especiaria</option><option>Coadjuvante</option><option>Aditivo</option>
             </select>
         </div>
         <div id="listaInsumosERP"></div>
