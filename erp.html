@@ -28,7 +28,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-11-14-72';
+    window.R8_BUILD = '2026-11-15-76';
     // Data de hoje (AAAA-MM-DD) no horário LOCAL — toISOString() usa UTC e, depois das 21h no Brasil, devolvia amanhã.
     window._r8HojeISO = function() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); };
     (function() {
@@ -8475,7 +8475,9 @@ function _r8ParsearXmlNFe(xmlText) {
             descricao: txt(prod, 'xProd'),
             unidadeNFe: txt(prod, 'uCom'),
             qtdNFe: parseFloat(txt(prod, 'qCom').replace(',', '.')) || 0,
-            valorUnitNFe: parseFloat(txt(prod, 'vUnCom').replace(',', '.')) || 0
+            valorUnitNFe: parseFloat(txt(prod, 'vUnCom').replace(',', '.')) || 0,
+            valorTotalNFe: parseFloat(txt(prod, 'vProd').replace(',', '.')) || 0,
+            doXml: true
         });
     }
     if (!itens.length) throw new Error('Nenhum item de produto encontrado nesta NF-e.');
@@ -8542,6 +8544,34 @@ window._r8ClearRevisaoLaudo = function(btn, idx) {
     btn.style.display = 'none';
 };
 
+// Conteúdo da embalagem lido da descrição (ex.: "Saca 25Kg" -> 25 kg; "Pacote 50gr" -> 50 g).
+window._r8ConteudoDaDescricao = function(desc) {
+    var m = String(desc || '').match(/(\d+(?:[.,]\d+)?)\s*(kg|kilos?|g|gr|grs|gramas?|ml|lt|l|litros?)\b/i);
+    if (!m) return null;
+    var v = parseFloat(m[1].replace(',', '.'));
+    var u = m[2].toLowerCase();
+    var un = /^kilo/.test(u) || u === 'kg' ? 'kg' : (/^g/.test(u) ? 'g' : (u === 'ml' ? 'ml' : 'l'));
+    return (v > 0) ? { valor: v, unidade: un } : null;
+};
+// Entrada no estoque = quantidade da NF-e x conteúdo, na unidade do estoque.
+window._r8RecalcEntradaNFe = function(el) {
+    var item = el.closest('.r8-revisao-item');
+    if (!item) return;
+    var q = parseFloat(item.getAttribute('data-qtd')) || 0;
+    var c = parseFloat(item.querySelector('._r8InConteudo').value) || 0;
+    var u = item.querySelector('._r8InUnidBase').value;
+    var t = item.querySelector('._r8InEntrada');
+    if (t) t.value = (q * c > 0) ? (Math.round(q * c * 1000000) / 1000000).toLocaleString('pt-BR') + ' ' + u : '';
+};
+
+// Unidade da NF-e convertida para as unidades do cadastro (kg, g, ml, l).
+// Outras unidades (UN, CX...) são gravadas como vêm na nota.
+window._r8UnidadeNFe = function(u) {
+    var x = String(u || '').trim().toUpperCase();
+    var m = { 'KG': 'kg', 'KILO': 'kg', 'KILOS': 'kg', 'G': 'g', 'GR': 'g', 'GRAMA': 'g', 'GRAMAS': 'g', 'ML': 'ml', 'L': 'l', 'LT': 'l', 'LITRO': 'l', 'LITROS': 'l' };
+    return m[x] || String(u || '').trim();
+};
+
 function _r8RenderizarRevisaoNFe(dados) {
     window._r8RevisaoLaudos = {};
     window._r8RevisaoItensAtual = dados.itens || [];
@@ -8582,7 +8612,9 @@ function _r8RenderizarRevisaoNFe(dados) {
         var avisoTipo = (!sug.sugestao && tipoPalpite)
             ? '<div style="font-size:11px;color:#b45309;margin-top:2px"><i class="fas fa-exclamation-triangle"></i> Tipo sugerido automaticamente — confirme antes de salvar</div>'
             : (!sug.sugestao ? '<div style="font-size:11px;color:#b45309;margin-top:2px"><i class="fas fa-exclamation-triangle"></i> Não consegui identificar o tipo — selecione manualmente</div>' : '');
-        return '<div class="r8-revisao-item" data-idx="' + idx + '" data-descricao="' + R8.esc(item.descricao) + '" style="border:1.5px solid #e0d8ce;border-radius:10px;padding:10px;margin-bottom:10px">'
+        return '<div class="r8-revisao-item" data-idx="' + idx + '" data-descricao="' + R8.esc(item.descricao) + '"'
+            + (item.doXml ? ' data-xml="1" data-qtd="' + item.qtdNFe + '" data-valor="' + item.valorUnitNFe + '" data-total="' + item.valorTotalNFe + '" data-unid="' + R8.esc(item.unidadeNFe || '') + '"' : '')
+            + ' style="border:1.5px solid #e0d8ce;border-radius:10px;padding:10px;margin-bottom:10px">'
             + '<div style="font-weight:700;color:#2c1810;font-size:13px">' + R8.esc(item.descricao) + '</div>'
             + '<div style="font-size:11.5px;color:#6b5f4f;margin:2px 0 8px">NF-e: ' + (item.qtdNFe || 0) + ' ' + R8.esc(item.unidadeNFe || '') + ' a ' + R8.formatarMoeda(item.valorUnitNFe || 0) + (item.ncm ? ' · NCM ' + R8.esc(item.ncm) : '') + '</div>'
             + '<div class="campo-linha"><label>Corresponde a</label><select class="_r8SelInsumo" onchange="_r8AlternarNovoInsumoNFe(' + idx + ')">' + opcoes + '</select></div>'
@@ -8591,9 +8623,11 @@ function _r8RenderizarRevisaoNFe(dados) {
             + avisoTipo
             + '</div>'
             + '<div class="linha-dupla">'
-            + '<div><label>Quantidade (no cadastro)</label><input type="number" step="0.01" class="_r8InQtd" value="' + (item.qtdNFe || '') + '"></div>'
-            + '<div><label>Valor unitário (R$)</label><input type="number" step="0.01" class="_r8InValor" value="' + (item.valorUnitNFe || '') + '"></div>'
+            + '<div><label>' + (item.doXml ? 'Quantidade (NF-e, ' + R8.esc(item.unidadeNFe || '') + ')' : 'Quantidade (no cadastro)') + '</label><input type="number" step="0.01" class="_r8InQtd" value="' + (item.qtdNFe || '') + '"' + (item.doXml ? ' readonly style="background:#f1f5f9"' : '') + '></div>'
+            + '<div><label>Valor unitário (R$)</label><input type="number" step="0.01" class="_r8InValor" value="' + (item.valorUnitNFe || '') + '"' + (item.doXml ? ' readonly style="background:#f1f5f9"' : '') + '></div>'
             + '</div>'
+            + (item.doXml ? '<div class="campo-linha"><label>Valor total (NF-e, R$)</label><input type="text" readonly style="background:#f1f5f9" value="' + R8.formatarMoeda(item.valorTotalNFe || 0) + '"></div>' : '')
+            + (item.doXml ? '<div class="linha-dupla"><div><label>Conteúdo por unidade</label><input type="number" step="any" class="_r8InConteudo" value="' + (window._r8ConteudoDaDescricao(item.descricao) ? window._r8ConteudoDaDescricao(item.descricao).valor : (/^(kg|g|ml|l)$/i.test(item.unidadeNFe || '') ? 1 : '')) + '" oninput="_r8RecalcEntradaNFe(this)"></div><div><label>Unidade do estoque</label><select class="_r8InUnidBase" onchange="_r8RecalcEntradaNFe(this)">' + ['kg', 'g', 'ml', 'l'].map(function(u) { var c = window._r8ConteudoDaDescricao(item.descricao); var base = c ? c.unidade : window._r8UnidadeNFe(item.unidadeNFe || ''); return '<option value="' + u + '"' + (base === u ? ' selected' : '') + '>' + u + '</option>'; }).join('') + '</select></div></div><div class="campo-linha"><label>Entrada no estoque</label><input type="text" readonly class="_r8InEntrada" style="background:#f1f5f9" value=""></div>' : '')
             + '<div class="linha-dupla">'
             + '<div><label>Lote</label><input type="text" class="_r8InLote" value="' + R8.esc(dados.nota.numero || '') + '"></div>'
             + '<div><label>Fornecedor</label><input type="text" class="_r8InFornecedor" value="' + R8.esc(dados.nota.fornecedorNome || '') + '"></div>'
@@ -8621,6 +8655,7 @@ function _r8RenderizarRevisaoNFe(dados) {
         + '</div>';
 
     card.innerHTML = cabecalho + itensHtml + botoes;
+    card.querySelectorAll('._r8InConteudo').forEach(function(i) { _r8RecalcEntradaNFe(i); });
     overlay.appendChild(card);
     document.body.appendChild(overlay);
 }
@@ -8642,6 +8677,23 @@ window._r8ConfirmarImportacaoNFe = function() {
     if (!overlay) return;
     var itensEl = overlay.querySelectorAll('.r8-revisao-item');
     var criados = 0, ignorados = 0;
+    // Estoque soma por código: o insumo escolhido precisa ter a mesma unidade da NF-e.
+    var conflitosUnid = [];
+    itensEl.forEach(function(el) {
+        if (el.getAttribute('data-xml') !== '1') return;
+        var sel0 = el.querySelector('._r8SelInsumo').value;
+        if (!sel0) return;
+        if (!(parseFloat(el.querySelector('._r8InConteudo').value) > 0)) { conflitosUnid.push(el.getAttribute('data-descricao') + ' (informe o conteúdo por unidade)'); return; }
+        if (sel0 === '__novo__') return;
+        var base0 = (dadosERP.insumos || []).find(function(i){ return i.codigo === sel0; });
+        if (!base0) return;
+        var un0 = el.querySelector('._r8InUnidBase').value;
+        if ((base0.unidade || 'g') !== un0) conflitosUnid.push(el.getAttribute('data-descricao') + ' (estoque: ' + un0 + ' · cadastro: ' + (base0.unidade || 'g') + ')');
+    });
+    if (conflitosUnid.length) {
+        R8.toast.erro('Unidade da NF-e diferente do insumo escolhido: ' + conflitosUnid.join('; ') + '. Escolha "Cadastrar como novo insumo" para estes itens.');
+        return;
+    }
     if (!dadosERP.movimentacoesEstoque) dadosERP.movimentacoesEstoque = [];
     // Importação direta de NF-e (Cadastro → Insumos): cada item também vira uma Compra em
     // Financeiro · Compras (pendente de pagamento). Itens que já vieram de uma compra do
@@ -8653,8 +8705,15 @@ window._r8ConfirmarImportacaoNFe = function() {
     itensEl.forEach(function(el) {
         var sel = el.querySelector('._r8SelInsumo').value;
         if (!sel) { ignorados++; return; }
-        var qtd = parseFloat(el.querySelector('._r8InQtd').value) || 0;
-        var valor = parseFloat(el.querySelector('._r8InValor').value) || 0;
+        var xml = el.getAttribute('data-xml') === '1';
+        var cont = xml ? (parseFloat(el.querySelector('._r8InConteudo').value) || 0) : 0;
+        var unidBase = xml ? el.querySelector('._r8InUnidBase').value : '';
+        var qtdNF = xml ? (parseFloat(el.getAttribute('data-qtd')) || 0) : 0;
+        var valorNF = xml ? (parseFloat(el.getAttribute('data-valor')) || 0) : 0;
+        var qtd = xml ? (Math.round(qtdNF * cont * 1000000) / 1000000) : (parseFloat(el.querySelector('._r8InQtd').value) || 0);
+        var valor = xml ? (valorNF / cont) : (parseFloat(el.querySelector('._r8InValor').value) || 0);
+        var totalXml = xml ? (parseFloat(el.getAttribute('data-total')) || 0) : null;
+        var unidNF = xml ? window._r8UnidadeNFe(el.getAttribute('data-unid')) : '';
         var lote = el.querySelector('._r8InLote').value || '';
         var fornecedor = el.querySelector('._r8InFornecedor').value || '';
         var produtor = el.querySelector('._r8InProdutor').value || '';
@@ -8674,15 +8733,16 @@ window._r8ConfirmarImportacaoNFe = function() {
         } else {
             var base = (dadosERP.insumos || []).find(function(i){ return i.codigo === sel; });
             if (!base) { ignorados++; return; }
-            codigo = base.codigo; descricao = base.descricao; tipo = base.tipo;
+            codigo = base.codigo; descricao = xml ? (el.getAttribute('data-descricao') || base.descricao) : base.descricao; tipo = base.tipo;
         }
-        var unid = (tipo === 'Malte' || tipo === 'Adjunto') ? 'kg' : 'g';
+        var unid = xml ? (unidBase || 'g') : ((tipo === 'Malte' || tipo === 'Adjunto') ? 'kg' : 'g');
         var origemLbl = window._r8OrigemImportacaoAtual || 'Importação NF-e';
         var obj = {
             codigo: codigo, descricao: descricao, tipo: tipo,
             lote: lote, produtor: produtor, fornecedor: fornecedor,
             qtd: qtd, valor: valor, unidade: unid, validade: validade,
-            valorTotal: qtd * valor, obs: origemLbl, origemCompraId: origemCompraId,
+            nfQtd: xml ? qtdNF : null, nfUnidade: xml ? unidNF : '', nfValorUnit: xml ? valorNF : null,
+            valorTotal: xml ? totalXml : qtd * valor, obs: origemLbl, origemCompraId: origemCompraId,
             laudoNome: laudo ? laudo.nome : '', laudoURL: '', laudoB64: laudo ? laudo.b64 : '', laudoTipo: laudo ? laudo.tipo : ''
         };
         obj.id = R8.novoId();
@@ -8690,7 +8750,7 @@ window._r8ConfirmarImportacaoNFe = function() {
             var nfNum = notaImp.numero || '', nfCnpj = notaImp.fornecedorCNPJ || '';
             var jaExiste = nfNum && comprasFin.some(function(cp) {
                 return cp.numeroNF === nfNum && (cp.cnpjFornecedor || '') === nfCnpj
-                    && cp.descricao === descricao && Math.abs((cp.quantidade || 0) - qtd) < 0.0001;
+                    && cp.descricao === descricao && Math.abs((cp.quantidade || 0) - (xml ? qtdNF : qtd)) < 0.0001;
             });
             if (!jaExiste) {
                 var dtNota = String(notaImp.dataEmissao || '').slice(0, 10);
@@ -8698,8 +8758,8 @@ window._r8ConfirmarImportacaoNFe = function() {
                 var compraNova = {
                     id: R8.novoId(), grupoId: grupoCompraId, secao: 'Fábrica', data: dtNota,
                     fornecedor: fornecedor, numeroNF: nfNum, cnpjFornecedor: nfCnpj,
-                    tipo: 'Insumos / Matéria-Prima', unidade: unid, descricao: descricao,
-                    valorUn: valor, quantidade: qtd, total: Math.round((qtd * valor + Number.EPSILON) * 100) / 100,
+                    tipo: 'Insumos / Matéria-Prima', unidade: xml ? unidNF : unid, descricao: descricao,
+                    valorUn: xml ? valorNF : valor, quantidade: xml ? qtdNF : qtd, total: xml ? totalXml : Math.round((qtd * valor + Number.EPSILON) * 100) / 100,
                     pagamento: '', vencimento: '', statusPag: 'pendente', anexo: null,
                     criadoEm: new Date().toISOString()
                 };
@@ -12361,7 +12421,7 @@ function atualizarTabelaEstoqueAgrupada(){
             +   '<div class="estoque-card-meta"><i class="fas fa-history"></i> <span>' + movTxt + '</span></div>'
             +   '<div class="estoque-card-meta"><i class="fas fa-dollar-sign"></i> <span>R$ ' + d.valorTotal.toFixed(2) + '</span></div>'
             + '</div>'
-            + (d.qtdTotal > 0 ? '<button type="button" onclick="_r8IrParaBaixaInsumo(\'' + R8.esc(String(d.codigo)).replace(/'/g, "\\'") + '\')" style="grid-column:1/-1;margin-top:8px;border:1px solid #fca5a5;background:#fef2f2;color:#991b1b;border-radius:9px;padding:7px 10px;font-size:12px;font-weight:700;cursor:pointer"><i class="fas fa-trash-alt"></i> Dar baixa</button>' : '')
+            + (d.qtdTotal > 0 ? '<button type="button" onclick="_r8IrParaBaixaInsumo(\'' + R8.esc(String(d.codigo)).replace(/'/g, "\\'") + '\')" style="grid-column:1/-1;justify-self:end;margin-top:4px;border:none;background:transparent;color:#991b1b;opacity:.75;padding:2px 4px;font-size:10px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:4px"><i class="fas fa-trash-alt" style="font-size:9px"></i> Baixa Manual</button>' : '')
             + '</div>';
     }).join('');
 }
@@ -14198,6 +14258,18 @@ window.r8pdfAutoTable=function(doc,opts){
             // Caso extremo: nem na fonte mínima cabe sem quebrar — mantém as larguras
             // calculadas (nunca menores que o necessário) em vez de forçar a quebra de texto.
         }
+        if(total>availWidth){
+            // Texto longo (ex.: descrição de lúpulo): limita a coluna e deixa quebrar linha,
+            // em vez de a tabela avançar além da margem direita.
+            var capW=availWidth*0.3;
+            larguras=larguras.map(function(w){return Math.min(w,capW);});
+            total=larguras.reduce(function(a,b){return a+b;},0);
+            if(total>availWidth){
+                var esc1=availWidth/total;
+                larguras=larguras.map(function(w){return w*esc1;});
+                total=availWidth;
+            }
+        }
         if(total>0&&total<availWidth){
             var cresce=availWidth/total;
             larguras=larguras.map(function(w){return w*cresce;});
@@ -14237,6 +14309,8 @@ window.gerarPDFEstoque=function(){
     r8pdfCabecalho(doc,'Estoque de Insumos','Consolidado por produto — '+obterData());
     let mapa=new Map();
     dadosERP.insumos.forEach(function(i){
+        // Cadastro automático da importação do Brew Beer, ainda sem entrada: não é insumo do estoque.
+        if(i._bbAuto && !(i.qtd>0)) return;
         let k=i.codigo+'|'+i.descricao+'|'+i.tipo+'|'+(i.lote||'')+'|'+(i.produtor||'')+'|'+(i.fornecedor||'');
         let e=mapa.get(k)||{codigo:i.codigo,descricao:i.descricao,tipo:i.tipo,lote:i.lote||'—',produtor:i.produtor||'—',fornecedor:i.fornecedor||'—',qtdTotal:0,unidade:i.unidade||(i.tipo==='Malte'||i.tipo==='Adjunto'?'kg':'g'),valorTotal:0};
         e.qtdTotal+=i.qtd||0;e.valorTotal+=i.valorTotal||0;mapa.set(k,e);
@@ -14262,13 +14336,19 @@ window.gerarPDFEstoque=function(){
             let saldoCodigo=_r8SaldoAgrupadoInsumo(d.codigo);
             return[d.codigo,d.descricao,d.lote,d.produtor,d.fornecedor,d.qtdTotal.toFixed(2)+' '+d.unidade,'R$ '+d.valorTotal.toFixed(2),saldoCodigo.toFixed(2)+' '+d.unidade];
         });
-        r8pdfAutoTable(doc,{
+        // Larguras FIXAS somando 182 mm (margens 14 mm): a tabela nunca passa da margem;
+        // a descrição quebra linha dentro da sua coluna.
+        doc.autoTable(Object.assign({},r8pdfEstiloTabela,{
             head:[['Código','Descrição','Lote','Produtor','Fornecedor','Qtde','Valor','Saldo']],
             body:linhas,
             startY:startY,
             theme:'striped',
-            styles:{fontSize:7,cellPadding:2},
-            columnStyles:{0:{cellWidth:22},1:{cellWidth:34},2:{cellWidth:20},3:{cellWidth:20},4:{cellWidth:24},5:{cellWidth:20,fontStyle:'bold',halign:'center'},6:{cellWidth:18},7:{cellWidth:24,halign:'center'}},
+            margin:{left:14,right:14,bottom:34},
+            tableWidth:182,
+            styles:Object.assign({},r8pdfEstiloTabela.bodyStyles,{fontSize:7,cellPadding:2,overflow:'linebreak'}),
+            bodyStyles:Object.assign({},r8pdfEstiloTabela.bodyStyles,{fontSize:7,cellPadding:2,overflow:'linebreak'}),
+            headStyles:Object.assign({},r8pdfEstiloTabela.headStyles,{fontSize:7,cellPadding:2}),
+            columnStyles:{0:{cellWidth:20},1:{cellWidth:42},2:{cellWidth:16},3:{cellWidth:16},4:{cellWidth:26},5:{cellWidth:22,fontStyle:'bold',halign:'center'},6:{cellWidth:18},7:{cellWidth:22,halign:'center'}},
             didParseCell:function(data){
                 if(data.section==='body'&&data.column.index===5){
                     data.cell.styles.fillColor=[254,243,199];data.cell.styles.textColor=[146,64,14];data.cell.styles.fontSize=8;
@@ -14279,7 +14359,7 @@ window.gerarPDFEstoque=function(){
                     else{data.cell.styles.textColor=[6,95,70];}
                 }
             }
-        });
+        }));
         startY=doc.lastAutoTable.finalY+6;
     });
     // Total Geral
