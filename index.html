@@ -26,7 +26,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-11-19-5';
+    window.R8_BUILD = '2026-11-20-4';
     (function() {
         var buildVisto = null;
         try { buildVisto = localStorage.getItem('r8_build_visto'); } catch(e){}
@@ -359,7 +359,7 @@
         .plano-card{background:#fff;border-radius:24px;padding:30px;box-shadow:0 10px 30px rgba(0,0,0,0.05);transition:transform 0.3s ease;border:1px solid #c49a2b;display:flex;flex-direction:column}
         .plano-card:hover{transform:translateY(-10px);box-shadow:0 20px 40px rgba(0,0,0,0.1)}
         .plano-card.destaque{border:2px solid var(--primary);position:relative}
-        .plano-card.destaque::before{content:"MAIS VENDIDO";position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:var(--primary);color:#fff;padding:4px 16px;border-radius:20px;font-size:12px;font-weight:700}
+        .plano-card.destaque::before{content:"MAIS ASSINADO";position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:var(--primary);color:#fff;padding:4px 16px;border-radius:20px;font-size:12px;font-weight:700}
         .plano-nome{font-size:28px;font-weight:800;color:var(--dark);margin-bottom:20px}
         .plano-preco{margin-bottom:20px;white-space:nowrap}
         .preco-principal{font-size:32px;font-weight:800;color:var(--primary)}
@@ -386,6 +386,51 @@
         .btn-copiar:hover{background:var(--primary)}
         .btn-assinar-final{background:var(--primary);color:#fff;border:none;padding:15px;border-radius:50px;font-weight:700;font-size:18px;cursor:pointer;width:100%;margin-top:10px}
         .btn-assinar-final:hover{background:var(--primary-dark)}
+        /* ── CADASTRO DA ASSINATURA (modal) ── */
+        .cad-wrap{max-width:560px;margin:0 auto}
+        .cad-aviso{background:#2c1810;color:#c49a2b;font-weight:700;font-size:13px;letter-spacing:.5px;text-align:center;padding:10px 14px;border-radius:12px}
+        .cad-titulo{font-family:'Bebas Neue',cursive;font-weight:400;font-size:clamp(22px,7.2vw,44px);letter-spacing:1px;color:#2c1810;display:flex;align-items:center;gap:10px;margin:18px 0 4px;line-height:1;white-space:nowrap}
+        .cad-titulo i{font-size:.8em;flex:none}
+        .cad-secao{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#c49a2b;font-size:15px;margin:24px 0 14px}
+        .cad-secao::after{content:'';flex:1;height:1px;background:var(--bege-dark)}
+        .cad-secao i{width:18px;text-align:center}
+        .cad-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+        .cad-full{grid-column:1/-1}
+        .cad-campo input{width:100%;box-sizing:border-box;height:58px;padding:0 12px;border:2px solid var(--bege-dark);border-radius:16px;background:#fff;font-family:Roboto,Arial,sans-serif;font-size:15px;font-weight:700;font-style:italic;color:#2c1810;text-align:center;outline:none}
+        .cad-campo input::placeholder{color:#c4474a;font-style:italic;opacity:1}
+        .cad-campo input:focus{border-color:var(--primary)}
+        .cad-campo input[readonly]{background:#eef2fb}
+        .cad-campo input.cad-erro{border-color:#c4474a}
+        .cad-frete{display:none;margin-top:16px;padding:12px 14px;border-radius:12px;background:var(--bege);color:#2c1810;font-size:15px;text-align:center}
+        .cad-frete.ativo{display:block}
+        .cad-btn{width:100%;height:56px;border:none;border-radius:14px;background:#c49a2b;color:#fff;font-family:'Montserrat',sans-serif;font-weight:700;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:12px;margin-top:14px;transition:.2s}
+        .cad-btn:hover{background:var(--primary-dark)}
+        .cad-btn-principal{font-size:17px;margin-top:12px}
+        .cad-pix-texto{font-size:14px;color:#2c1810;margin:6px 0 10px}
+        .cad-cancelar{display:block;width:100%;background:none;border:none;font-family:Roboto,Arial,sans-serif;font-size:22px;color:#2c1810;margin-top:16px;padding:8px;cursor:pointer}
+        .cad-campo input{text-overflow:ellipsis}
+        #cpfAssinante,#celularAssinante{font-size:13px;padding:0 4px;letter-spacing:-.2px}
+        #cepAssinante,#numeroAssinante{font-size:14px;padding:0 6px}
+        #cidadeAssinante,#bairroAssinante{font-size:14px;padding:0 8px}
+        .cad-grid-10{grid-template-columns:repeat(10,1fr)}
+        .cad-s3{grid-column:span 3}.cad-s4{grid-column:span 4}.cad-s6{grid-column:span 6}.cad-s7{grid-column:span 7}
+        .cad-campo select{width:100%;box-sizing:border-box;height:58px;padding:0 12px;border:2px solid var(--bege-dark);border-radius:16px;background:#fff;font-family:Roboto,Arial,sans-serif;font-size:14px;font-weight:700;color:#2c1810;text-align:center;text-align-last:center;outline:none}
+        .cad-campo select:focus{border-color:var(--primary)}
+        .cad-campo select.cad-erro{border-color:#c4474a}
+        .cad-frete-op{display:flex;align-items:center;gap:10px;margin-top:10px;padding:12px 14px;border:2px solid var(--bege-dark);border-radius:14px;background:#fff;cursor:pointer;text-align:left}
+        .cad-frete-op.sel{border-color:#c49a2b;background:#fffaf0}
+        .cad-frete-op input{accent-color:#c49a2b;width:20px;height:20px;flex:none;margin:0}
+        .cad-frete-op .info{flex:1;min-width:0;display:flex;flex-direction:column}
+        .cad-frete-op .nome{font-weight:700;font-size:14px}
+        .cad-frete-op .prazo{font-size:12px;opacity:.75}
+        .cad-frete-op .val{font-weight:800;font-size:15px;white-space:nowrap}
+        .cad-total{display:none;margin-top:12px;padding:12px 14px;border-radius:12px;background:#2c1810;color:#fff;font-size:14px;line-height:1.7}
+        .cad-total.ativo{display:block}
+        .cad-total .lin,.cad-pix-resumo .lin{display:flex;justify-content:space-between;gap:10px}
+        .cad-total .tot{border-top:1px solid rgba(255,255,255,.25);margin-top:6px;padding-top:6px;font-weight:800;font-size:16px;color:#c49a2b}
+        .cad-pix-resumo{text-align:left;font-size:14px;color:#2c1810;line-height:1.7;margin:6px 0 4px}
+        .cad-pix-resumo .tot{border-top:1px solid var(--bege-dark);margin-top:6px;padding-top:6px;font-weight:800;font-size:17px}
+        @media(max-width:360px){#cpfAssinante,#celularAssinante{font-size:12px}}
 
         /* ── FOOTER ── */
         footer{background:var(--dark);color:#fff;padding:60px 0 20px;border-top:4px solid var(--primary)}
@@ -2004,7 +2049,7 @@ window._menuAcao = function(acao) {
                         <li><i class="fas fa-check"></i> Flexibilidade total, sem fidelização</li>
                         <li><i class="fas fa-check"></i> 5% desconto no brewpub</li>
                     </ul>
-                    <button class="btn-plano" onclick="abrirModal('assinar')"><i class="fas fa-beer"></i> ASSINE AGORA</button>
+                    <button class="btn-plano" onclick="abrirModal('assinar','mensal')"><i class="fas fa-beer"></i> ASSINE AGORA</button>
                 </div>
                 <div class="plano-card destaque">
                     <div class="plano-nome">Plano Semestral</div>
@@ -2015,7 +2060,7 @@ window._menuAcao = function(acao) {
                         <li><i class="fas fa-check"></i> 1 cerveja exclusiva edição limitada</li>
                         <li><i class="fas fa-check"></i> Imersão e participação em uma produção</li>
                     </ul>
-                    <button class="btn-plano" onclick="abrirModal('assinar')"><i class="fas fa-beer"></i> ASSINE AGORA</button>
+                    <button class="btn-plano" onclick="abrirModal('assinar','semestral')"><i class="fas fa-beer"></i> ASSINE AGORA</button>
                 </div>
                 <div class="plano-card">
                     <div class="plano-nome">Plano Anual</div>
@@ -2026,7 +2071,7 @@ window._menuAcao = function(acao) {
                         <li><i class="fas fa-check"></i> 2 cervejas exclusivas bônus no ano</li>
                         <li><i class="fas fa-check"></i> Degustação, imersão e participação em produção</li>
                     </ul>
-                    <button class="btn-plano" onclick="abrirModal('assinar')"><i class="fas fa-beer"></i> ASSINE AGORA</button>
+                    <button class="btn-plano" onclick="abrirModal('assinar','anual')"><i class="fas fa-beer"></i> ASSINE AGORA</button>
                 </div>
             </div>
         </div>
@@ -2306,9 +2351,9 @@ window.abrirModal = function(tipo, estiloId) {
             + '<div class="planos-modal-card"><h3>Plano Anual</h3><p><strong>R$ 1.199,00</strong></p><p>15% desconto</p><p>2 cervejas bonus</p><button class="btn-assinar-plano-modal" id="btnAssinarPlano3">ASSINE</button></div>'
             + '</div>';
         setTimeout(function(){
-            ['btnAssinarPlano','btnAssinarPlano2','btnAssinarPlano3'].forEach(function(id){
+            ['btnAssinarPlano','btnAssinarPlano2','btnAssinarPlano3'].forEach(function(id, i){
                 var b = document.getElementById(id);
-                if(b) b.onclick = function(){ window.abrirModal('assinar'); };
+                if(b) b.onclick = function(){ window.abrirModal('assinar', ['mensal','semestral','anual'][i]); };
             });
         }, 50);
     } else if(tipo==='estilos') {
@@ -2338,30 +2383,10 @@ window.abrirModal = function(tipo, estiloId) {
         modal.classList.add('active');
         return;
     } else if(tipo==='assinar') {
-        cont.innerHTML = '<h2 class="detalhe-titulo">Assinar Rota 8 Confraria</h2>'
-            + '<div class="assinatura-form">'
-            + '<div class="form-row"><div class="campo"><label>Nome Completo *</label><input type="text" id="nomeAssinante" placeholder="-"></div>'
-            + '<div class="campo"><label>CPF *</label><input type="text" id="cpfAssinante" placeholder="-"></div></div>'
-            + '<div class="form-row"><div class="campo"><label>Rua *</label><input type="text" id="ruaAssinante" placeholder="-"></div>'
-            + '<div class="campo"><label>Nº *</label><input type="text" id="numeroAssinante" placeholder="-"></div></div>'
-            + '<div class="form-row"><div class="campo"><label>Bairro *</label><input type="text" id="bairroAssinante" placeholder="-"></div>'
-            + '<div class="campo"><label>Cidade *</label><input type="text" id="cidadeAssinante" placeholder="-"></div></div>'
-            + '<div class="campo"><label>Celular *</label><input type="text" id="celularAssinante" placeholder="-"></div>'
-            + '<div class="pix-area"><h4>Pagamento via PIX</h4><div class="chave-pix">52.013.107/0001-78</div>'
-            + '<button class="btn-copiar" id="btnCopiarPix">Copiar chave</button></div>'
-            + '<button class="btn-assinar-final" id="btnFinalizarAssinar">Finalizar Assinatura</button>'
-            + '</div>';
-        setTimeout(function(){
-            var bp = document.getElementById('btnCopiarPix');
-            if(bp) bp.onclick = function(){ navigator.clipboard.writeText('52.013.107/0001-78').then(function(){ R8.toast.ok('Chave Pix copiada!'); }); };
-            var bf = document.getElementById('btnFinalizarAssinar');
-            if(bf) bf.onclick = function(){ if(typeof enviarParaWhatsApp === 'function') enviarParaWhatsApp(); };
-            // Aplicar máscaras
-            var cpfEl = document.getElementById('cpfAssinante');
-            var celEl = document.getElementById('celularAssinante');
-            if(cpfEl) window._aplicarMascaraCPF(cpfEl);
-            if(celEl) window._aplicarMascaraTelefone(celEl);
-        }, 50);
+        window._r8PlanoSel = ((window._r8Planos || {})[estiloId]) ? estiloId : '';
+        window._r8FreteAtual = null;
+        cont.innerHTML = window._r8HtmlCadastro();
+        setTimeout(window._r8LigarCadastro, 50);
     } else {
         cont.innerHTML = '<h2>'+tipo.toUpperCase()+'</h2><p>Conteúdo em atualização.</p>';
     }
@@ -10797,6 +10822,358 @@ window.gerarPDFFichaLayout=gerarPDFFichaLayout;
 
 // abrirModal/fecharModal definidos no primeiro script
 
+
+
+// ═══════════════════════════════════════════════════════
+// CADASTRO DA ASSINATURA — layout de compra, consulta de CEP e frete
+// ═══════════════════════════════════════════════════════
+// REGRAS DE FRETE: até 3 opções por destino, cada uma com nome, valor (R$) e prazo.
+// Ordem de busca: porCidade -> porUF -> padrao. Sem regra, mostra "a confirmar pelo WhatsApp".
+// porCidade: chave "cidade-uf" em minúsculo e sem acento.
+// Exemplo (substituir pelos valores reais):
+//   'bombinhas-sc': [ {nome:'Econômico', valor:0, prazo:'5 a 8 dias úteis'}, {nome:'Padrão', valor:0, prazo:'3 a 5 dias úteis'}, {nome:'Expresso', valor:0, prazo:'1 a 2 dias úteis'} ]
+// TABELA DE FRETE — valor de UMA remessa (envio mensal).
+// Ordem de busca: porCidade -> porUF -> porRegiao (pela UF do CEP) -> padrao.
+// ⚠️ VALORES DE EXEMPLO: substituir pelos valores reais antes de publicar.
+window._r8FreteConfig = {
+    porCidade: {},
+    porUF: {},
+    regioes: {
+        'PR':'sul','SC':'sul','RS':'sul',
+        'SP':'sudeste','RJ':'sudeste','MG':'sudeste','ES':'sudeste',
+        'MS':'centro-oeste','MT':'centro-oeste','GO':'centro-oeste','DF':'centro-oeste',
+        'BA':'nordeste','SE':'nordeste','AL':'nordeste','PE':'nordeste','PB':'nordeste','RN':'nordeste','CE':'nordeste','PI':'nordeste','MA':'nordeste',
+        'AM':'norte','RR':'norte','AP':'norte','PA':'norte','TO':'norte','RO':'norte','AC':'norte'
+    },
+    porRegiao: {
+        'sul':          [ {nome:'Econômico', valor:18.00, prazo:'5 a 8 dias úteis'},   {nome:'Expresso', valor:28.00, prazo:'2 a 4 dias úteis'} ],
+        'sudeste':      [ {nome:'Econômico', valor:22.00, prazo:'6 a 9 dias úteis'},   {nome:'Expresso', valor:34.00, prazo:'3 a 5 dias úteis'} ],
+        'centro-oeste': [ {nome:'Econômico', valor:28.00, prazo:'7 a 10 dias úteis'},  {nome:'Expresso', valor:42.00, prazo:'4 a 6 dias úteis'} ],
+        'nordeste':     [ {nome:'Econômico', valor:35.00, prazo:'8 a 12 dias úteis'},  {nome:'Expresso', valor:55.00, prazo:'5 a 7 dias úteis'} ],
+        'norte':        [ {nome:'Econômico', valor:45.00, prazo:'10 a 15 dias úteis'}, {nome:'Expresso', valor:70.00, prazo:'6 a 9 dias úteis'} ]
+    },
+    padrao: []
+};
+// Remessas por plano: 1 envio por mês (semestral = 6, anual = 12).
+window._r8Planos = {
+    mensal:    { nome: 'Plano Mensal',    valor: 119.90,  rotulo: 'R$ 119,90/mês', remessas: 1 },
+    semestral: { nome: 'Plano Semestral', valor: 659.00,  rotulo: 'R$ 659,00',     remessas: 6 },
+    anual:     { nome: 'Plano Anual',     valor: 1199.00, rotulo: 'R$ 1.199,00',   remessas: 12 }
+};
+window._r8PlanoSel = '';
+window._r8FreteAtual = null;
+window._r8EndCEP = null;
+
+window._r8SemAcento = function(s){ return String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim(); };
+window._r8Digitos = function(s){ return String(s||'').replace(/\D/g,''); };
+window._r8Moeda = function(v){ return Number(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}); };
+window._r8Aviso = function(m){ try { R8.toast.aviso(m, 3500); } catch(e){ alert(m); } };
+
+window._r8MostrarFrete = function(html){
+    var box = document.getElementById('cadFreteResultado');
+    if(!box) return;
+    box.innerHTML = html;
+    box.className = 'cad-frete ativo';
+};
+
+window._r8BuscarCEP = function(cepNum){
+    var cidadeEl = document.getElementById('cidadeAssinante');
+    var ruaEl = document.getElementById('ruaAssinante');
+    var bairroEl = document.getElementById('bairroAssinante');
+    if(cidadeEl) cidadeEl.value = 'Buscando...';
+    fetch('https://viacep.com.br/ws/' + cepNum + '/json/')
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+            if(d.erro) throw new Error('cep nao encontrado');
+            window._r8EndCEP = { cep: cepNum, cidade: d.localidade||'', uf: d.uf||'' };
+            if(ruaEl && !ruaEl.value) ruaEl.value = d.logradouro||'';
+            if(bairroEl && !bairroEl.value) bairroEl.value = d.bairro||'';
+            if(cidadeEl){
+                cidadeEl.value = (d.localidade||'') + ' / ' + (d.uf||'');
+                cidadeEl.readOnly = true;
+            }
+            try { window._r8CalcularFrete(true); } catch(e){}
+        })
+        .catch(function(){
+            window._r8EndCEP = null;
+            if(cidadeEl){
+                cidadeEl.value = '';
+                cidadeEl.readOnly = false;
+                cidadeEl.placeholder = 'Cidade / UF *';
+            }
+            window._r8Aviso('CEP não encontrado. Confira o número.');
+        });
+};
+
+window._r8Esc = function(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
+
+window._r8OcultarPix = function(){
+    var p = document.getElementById('cadPixArea');
+    if(p) p.style.display = 'none';
+};
+
+window._r8OpcoesFrete = function(end){
+    var cfg = window._r8FreteConfig || {};
+    var chave = window._r8SemAcento(end.cidade) + '-' + String(end.uf).toLowerCase();
+    var bruto = (cfg.porCidade || {})[chave];
+    if(bruto == null) bruto = (cfg.porUF || {})[end.uf];
+    if(bruto == null && cfg.regioes && cfg.porRegiao) bruto = cfg.porRegiao[cfg.regioes[end.uf]];
+    if(bruto == null) bruto = cfg.padrao;
+    if(bruto == null) return [];
+    if(!Array.isArray(bruto)) bruto = [bruto];
+    return bruto.map(function(o){
+        if(typeof o === 'number') o = { valor: o };
+        return { nome: String(o.nome || 'Entrega'), valor: Number(o.valor), prazo: String(o.prazo || '') };
+    }).filter(function(o){ return isFinite(o.valor) && o.valor >= 0; }).slice(0, 3);
+};
+
+window._r8CalcularFrete = function(silencioso){
+    var aviso = silencioso ? function(){} : window._r8Aviso;
+    var cep = window._r8Digitos((document.getElementById('cepAssinante')||{}).value);
+    if(cep.length !== 8){ aviso('Informe um CEP válido.'); return null; }
+    var end = window._r8EndCEP;
+    if(!end || end.cep !== cep){ aviso('Aguarde o endereço do CEP ser localizado.'); return null; }
+    var opcoes = window._r8OpcoesFrete(end);
+    var res = { cep: cep, opcoes: opcoes, escolha: null, valor: null, nome: '', prazo: '' };
+    window._r8FreteAtual = res;
+    window._r8OcultarPix();
+    var local = window._r8Esc(end.cidade) + '/' + window._r8Esc(end.uf);
+    if(!opcoes.length){
+        window._r8MostrarFrete('<i class="fas fa-truck"></i> Frete para ' + local + ': <b>a confirmar pelo WhatsApp</b>');
+    } else {
+        var h = '<div><i class="fas fa-truck"></i> Frete para ' + local + ': <b>escolha uma opção</b></div>';
+        opcoes.forEach(function(o, i){
+            h += '<label class="cad-frete-op" data-i="' + i + '"><input type="radio" name="freteOp" value="' + i + '">'
+               + '<span class="info"><span class="nome">' + window._r8Esc(o.nome) + '</span>'
+               + (o.prazo ? '<span class="prazo">Prazo: ' + window._r8Esc(o.prazo) + '</span>' : '')
+               + '</span><span class="val">' + window._r8Moeda(o.valor) + '<br><small>por envio</small></span></label>';
+        });
+        window._r8MostrarFrete(h);
+        var box = document.getElementById('cadFreteResultado');
+        if(box) box.querySelectorAll('input[name="freteOp"]').forEach(function(r){
+            r.onchange = function(){ window._r8EscolherFrete(parseInt(this.value, 10)); };
+        });
+    }
+    window._r8AtualizarTotal();
+    return res;
+};
+
+window._r8EscolherFrete = function(i){
+    var f = window._r8FreteAtual;
+    if(!f || !f.opcoes || !f.opcoes[i]) return;
+    f.escolha = i;
+    f.valor = f.opcoes[i].valor;
+    f.nome = f.opcoes[i].nome;
+    f.prazo = f.opcoes[i].prazo;
+    document.querySelectorAll('#cadFreteResultado .cad-frete-op').forEach(function(l){
+        l.classList.toggle('sel', l.getAttribute('data-i') === String(i));
+    });
+    window._r8OcultarPix();
+    window._r8AtualizarTotal();
+};
+
+window._r8TotalAssinatura = function(){
+    var p = (window._r8Planos || {})[window._r8PlanoSel];
+    if(!p) return null;
+    var f = window._r8FreteAtual;
+    var temFrete = !!(f && f.valor != null);
+    var n = p.remessas || 1;
+    var freteTotal = temFrete ? Math.round(f.valor * n * 100) / 100 : null;
+    return {
+        plano: p,
+        frete: temFrete ? f.valor : null,
+        remessas: n,
+        freteTotal: freteTotal,
+        total: temFrete ? Math.round((p.valor + freteTotal) * 100) / 100 : null,
+        semOpcoes: !!(f && (!f.opcoes || !f.opcoes.length))
+    };
+};
+
+window._r8AtualizarTotal = function(){
+    var box = document.getElementById('cadTotal');
+    if(!box) return;
+    var t = window._r8TotalAssinatura();
+    if(!t){ box.className = 'cad-total'; box.innerHTML = ''; return; }
+    var f = window._r8FreteAtual;
+    var linhaFrete, linhaTotal;
+    if(t.frete != null){
+        linhaFrete = window._r8Esc(f.nome) + (f.prazo ? ' (' + window._r8Esc(f.prazo) + ')' : '') + '<br><small>' + t.remessas + (t.remessas > 1 ? ' remessas' : ' remessa') + ' × ' + window._r8Moeda(t.frete) + '</small> <b>' + window._r8Moeda(t.freteTotal) + '</b>';
+        linhaTotal = window._r8Moeda(t.total);
+    } else if(t.semOpcoes){
+        linhaFrete = '<b>a confirmar pelo WhatsApp</b>';
+        linhaTotal = window._r8Moeda(t.plano.valor) + ' + frete';
+    } else {
+        linhaFrete = '<b>escolha uma opção</b>';
+        linhaTotal = window._r8Moeda(t.plano.valor) + ' + frete';
+    }
+    box.innerHTML = '<div class="lin"><span>' + window._r8Esc(t.plano.nome) + '</span><b>' + window._r8Moeda(t.plano.valor) + '</b></div>'
+        + '<div class="lin"><span>Frete</span><span>' + linhaFrete + '</span></div>'
+        + '<div class="lin tot"><span>Total</span><span>' + linhaTotal + '</span></div>';
+    box.className = 'cad-total ativo';
+};
+
+window._r8DadosCadastro = function(){
+    var g = function(id){ var el = document.getElementById(id); return el ? el.value.trim() : ''; };
+    var plano = g('planoAssinante'),
+        nome = g('nomeAssinante'), cpf = g('cpfAssinante'), cel = g('celularAssinante'),
+        cep = g('cepAssinante'), cidade = g('cidadeAssinante'), rua = g('ruaAssinante'),
+        num = g('numeroAssinante'), bairro = g('bairroAssinante');
+    var checks = [
+        ['planoAssinante', !!(window._r8Planos || {})[plano], 'Plano'],
+        ['nomeAssinante', nome.length >= 3, 'Nome completo'],
+        ['cpfAssinante', window._r8Digitos(cpf).length === 11, 'CPF'],
+        ['cepAssinante', window._r8Digitos(cep).length === 8, 'CEP'],
+        ['cidadeAssinante', cidade.length > 0, 'Cidade/UF'],
+        ['ruaAssinante', rua.length > 0, 'Rua/Avenida'],
+        ['numeroAssinante', num.length > 0, 'Número'],
+        ['bairroAssinante', bairro.length > 0, 'Bairro']
+    ];
+    var faltas = [], primeiro = null;
+    checks.forEach(function(c){
+        var el = document.getElementById(c[0]);
+        if(el) el.classList.toggle('cad-erro', !c[1]);
+        if(!c[1]){ faltas.push(c[2]); if(!primeiro) primeiro = el; }
+    });
+    if(faltas.length){
+        window._r8Aviso('Preencha: ' + faltas.join(', ') + '.');
+        if(primeiro) primeiro.focus();
+        return null;
+    }
+    window._r8PlanoSel = plano;
+    var frete = window._r8FreteAtual;
+    if(!frete || frete.cep !== window._r8Digitos(cep)) frete = window._r8CalcularFrete();
+    if(!frete) return null;
+    if(frete.opcoes && frete.opcoes.length && frete.escolha == null){
+        window._r8Aviso('Escolha uma das opções de frete.');
+        var bx = document.getElementById('cadFreteResultado');
+        if(bx && bx.scrollIntoView) bx.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        return null;
+    }
+    var p = window._r8Planos[plano];
+    var n = p.remessas || 1;
+    var freteTotal = frete.valor == null ? null : Math.round(frete.valor * n * 100) / 100;
+    return { plano: p, nome: nome, cpf: cpf, cel: cel, cep: cep, cidade: cidade, rua: rua, num: num, bairro: bairro, frete: frete,
+             remessas: n, freteTotal: freteTotal,
+             total: freteTotal == null ? null : Math.round((p.valor + freteTotal) * 100) / 100 };
+};
+
+window._r8TxtFrete = function(d){
+    if(d.frete.valor == null) return 'a confirmar';
+    return d.remessas + (d.remessas > 1 ? ' remessas' : ' remessa') + ' x ' + window._r8Moeda(d.frete.valor) + ' = ' + window._r8Moeda(d.freteTotal) + ' (' + d.frete.nome + (d.frete.prazo ? ' - ' + d.frete.prazo : '') + ')';
+};
+
+window._r8GerarPix = function(){
+    var d = window._r8DadosCadastro();
+    if(!d) return;
+    var box = document.getElementById('cadPixArea');
+    if(!box) return;
+    var aConfirmar = d.frete.valor == null;
+    var linhaFrete = aConfirmar ? '<b>a confirmar</b>'
+        : window._r8Esc(d.frete.nome) + (d.frete.prazo ? ' (' + window._r8Esc(d.frete.prazo) + ')' : '') + '<br><small>' + d.remessas + (d.remessas > 1 ? ' remessas' : ' remessa') + ' × ' + window._r8Moeda(d.frete.valor) + '</small> <b>' + window._r8Moeda(d.freteTotal) + '</b>';
+    box.innerHTML = '<h4>Pagamento via PIX</h4>'
+        + '<div class="cad-pix-resumo">'
+        + '<div class="lin"><span>' + window._r8Esc(d.plano.nome) + '</span><b>' + window._r8Moeda(d.plano.valor) + '</b></div>'
+        + '<div class="lin"><span>Frete</span><span>' + linhaFrete + '</span></div>'
+        + '<div class="lin tot"><span>' + (aConfirmar ? 'Valor da assinatura' : 'Total a pagar') + '</span><span>' + window._r8Moeda(aConfirmar ? d.plano.valor : d.total) + '</span></div>'
+        + '</div>'
+        + '<div class="chave-pix">52.013.107/0001-78</div>'
+        + '<p class="cad-pix-texto">' + (aConfirmar ? 'Frete a confirmar pelo WhatsApp. ' : '') + 'Após o pagamento, envie o pedido pelo WhatsApp para confirmação.</p>'
+        + '<button type="button" class="btn-copiar" id="btnCopiarPixCad">Copiar chave</button>'
+        + '<button type="button" class="cad-btn cad-btn-principal" id="btnEnviarPedidoCad">Enviar pedido no WhatsApp</button>';
+    box.style.display = 'block';
+    var bc = document.getElementById('btnCopiarPixCad');
+    if(bc) bc.onclick = function(){
+        navigator.clipboard.writeText('52.013.107/0001-78').then(function(){ window._r8Aviso('Chave Pix copiada!'); }).catch(function(){});
+    };
+    var be = document.getElementById('btnEnviarPedidoCad');
+    if(be) be.onclick = function(){ window._r8EnviarPedido(); };
+};
+
+window._r8EnviarPedido = function(){
+    var d = window._r8DadosCadastro();
+    if(!d) return;
+    var txtTotal = d.total == null ? (window._r8Moeda(d.plano.valor) + ' + frete a confirmar') : window._r8Moeda(d.total);
+    var msg = '🍺 NOVO PEDIDO - ROTA 8 CONFRARIA 🍺\n\n'
+        + '📦 PLANO: ' + d.plano.nome + ' - ' + window._r8Moeda(d.plano.valor) + '\n\n'
+        + '📋 DADOS:\nNome: ' + d.nome + '\nCPF: ' + d.cpf + '\nCelular/WhatsApp: ' + (d.cel || 'não informado') + '\n\n'
+        + '📍 ENTREGA:\n' + d.rua + ', ' + d.num + ' - ' + d.bairro + ', ' + d.cidade + ' - CEP: ' + d.cep + '\n\n'
+        + '🚚 Frete: ' + window._r8TxtFrete(d) + '\n💰 TOTAL: ' + txtTotal + '\n💳 Pagamento: PIX 52.013.107/0001-78';
+    window.open('https://wa.me/5547992087958?text=' + encodeURIComponent(msg), '_blank');
+};
+
+window._r8SelectPlano = function(){
+    var P = window._r8Planos || {}, sel = window._r8PlanoSel || '';
+    var h = '<select id="planoAssinante"><option value=""' + (sel ? '' : ' selected') + ' disabled>Escolha o plano *</option>';
+    Object.keys(P).forEach(function(k){
+        h += '<option value="' + k + '"' + (k === sel ? ' selected' : '') + '>' + P[k].nome + ' — ' + P[k].rotulo + '</option>';
+    });
+    return h + '</select>';
+};
+
+window._r8HtmlCadastro = function(){
+    return [
+        '<div class="cad-wrap">',
+        '  <h2 class="cad-titulo"><i class="fas fa-clipboard-list"></i> Finalizar assinatura</h2>',
+        '  <div class="cad-secao"><i class="fas fa-beer"></i> Plano</div>',
+        '  <div class="cad-grid"><div class="cad-campo cad-full">' + window._r8SelectPlano() + '</div></div>',
+        '  <div class="cad-secao"><i class="fas fa-user"></i> Dados pessoais</div>',
+        '  <div class="cad-grid">',
+        '    <div class="cad-campo cad-full"><input id="nomeAssinante" type="text" placeholder="Nome completo *" autocomplete="name"></div>',
+        '    <div class="cad-campo"><input id="cpfAssinante" type="text" placeholder="CPF *" inputmode="numeric"></div>',
+        '    <div class="cad-campo"><input id="celularAssinante" type="text" placeholder="Celular/WhatsApp" inputmode="tel"></div>',
+        '  </div>',
+        '  <div class="cad-secao"><i class="fas fa-location-dot"></i> Endereço de entrega</div>',
+        '  <div class="cad-grid cad-grid-10">',
+        '    <div class="cad-campo cad-s4"><input id="cepAssinante" type="text" placeholder="CEP *" inputmode="numeric" autocomplete="postal-code"></div>',
+        '    <div class="cad-campo cad-s6"><input id="cidadeAssinante" type="text" placeholder="Cidade / UF" readonly></div>',
+        '    <div class="cad-campo cad-full"><input id="ruaAssinante" type="text" placeholder="Rua / Avenida *"></div>',
+        '    <div class="cad-campo cad-s3"><input id="numeroAssinante" type="text" placeholder="Nº *" inputmode="numeric"></div>',
+        '    <div class="cad-campo cad-s7"><input id="bairroAssinante" type="text" placeholder="Bairro *"></div>',
+        '  </div>',
+        '  <div id="cadFreteResultado" class="cad-frete" aria-live="polite"></div>',
+        '  <div id="cadTotal" class="cad-total" aria-live="polite"></div>',
+        '  <button type="button" id="btnRecalcularFrete" class="cad-btn"><i class="fas fa-truck"></i> Recalcular Frete</button>',
+        '  <button type="button" id="btnGerarPix" class="cad-btn cad-btn-principal">Gerar PIX para pagamento</button>',
+        '  <div id="cadPixArea" class="pix-area" style="display:none"></div>',
+        '  <button type="button" id="btnCancelarCadastro" class="cad-cancelar">Cancelar</button>',
+        '</div>'
+    ].join('\n');
+};
+
+window._r8LigarCadastro = function(){
+    var cpfEl = document.getElementById('cpfAssinante');
+    var celEl = document.getElementById('celularAssinante');
+    var cepEl = document.getElementById('cepAssinante');
+    var plEl = document.getElementById('planoAssinante');
+    if(cpfEl) window._aplicarMascaraCPF(cpfEl);
+    if(celEl) window._aplicarMascaraTelefone(celEl);
+    if(plEl) plEl.onchange = function(){
+        window._r8PlanoSel = this.value;
+        this.classList.remove('cad-erro');
+        window._r8OcultarPix();
+        window._r8AtualizarTotal();
+    };
+    if(cepEl){
+        cepEl.addEventListener('input', function(){
+            var v = window._r8Digitos(this.value).slice(0,8);
+            this.value = v.length > 5 ? v.slice(0,5) + '-' + v.slice(5) : v;
+            window._r8FreteAtual = null;
+            var box = document.getElementById('cadFreteResultado');
+            if(box) box.className = 'cad-frete';
+            var pix = document.getElementById('cadPixArea');
+            if(pix) pix.style.display = 'none';
+            window._r8AtualizarTotal();
+            if(v.length === 8) window._r8BuscarCEP(v);
+        });
+    }
+    var b1 = document.getElementById('btnRecalcularFrete');
+    if(b1) b1.onclick = function(){ window._r8CalcularFrete(); };
+    var b2 = document.getElementById('btnGerarPix');
+    if(b2) b2.onclick = function(){ window._r8GerarPix(); };
+    var b3 = document.getElementById('btnCancelarCadastro');
+    if(b3) b3.onclick = function(){ if(window.fecharModal) window.fecharModal(); };
+    window._r8AtualizarTotal();
+};
 
 window.enviarParaWhatsApp=function(){
     let nome=document.getElementById('nomeAssinante')?.value||'';
