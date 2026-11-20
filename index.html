@@ -26,7 +26,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-11-20-4';
+    window.R8_BUILD = '2026-11-20-6';
     (function() {
         var buildVisto = null;
         try { buildVisto = localStorage.getItem('r8_build_visto'); } catch(e){}
@@ -358,8 +358,8 @@
         .planos-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:30px}
         .plano-card{background:#fff;border-radius:24px;padding:30px;box-shadow:0 10px 30px rgba(0,0,0,0.05);transition:transform 0.3s ease;border:1px solid #c49a2b;display:flex;flex-direction:column}
         .plano-card:hover{transform:translateY(-10px);box-shadow:0 20px 40px rgba(0,0,0,0.1)}
-        .plano-card.destaque{border:2px solid var(--primary);position:relative}
-        .plano-card.destaque::before{content:"MAIS ASSINADO";position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:var(--primary);color:#fff;padding:4px 16px;border-radius:20px;font-size:12px;font-weight:700}
+        .plano-card.destaque{border:2px solid var(--primary);position:relative;overflow:visible;z-index:1}
+        .plano-card.destaque::before{content:"MAIS ASSINADO";position:absolute;top:-14px;left:50%;transform:translateX(-50%);background:var(--primary);color:#fff;padding:5px 16px;border-radius:20px;font-size:12px;font-weight:700;line-height:1.2;white-space:nowrap;z-index:2;box-shadow:0 4px 12px rgba(0,0,0,0.15)}
         .plano-nome{font-size:28px;font-weight:800;color:var(--dark);margin-bottom:20px}
         .plano-preco{margin-bottom:20px;white-space:nowrap}
         .preco-principal{font-size:32px;font-weight:800;color:var(--primary)}
@@ -10854,6 +10854,9 @@ window._r8FreteConfig = {
     },
     padrao: []
 };
+// Backend (Google Apps Script) — consulta SEDEX/PAC/Expresso São Miguel e registra assinantes.
+// Preencher com a URL do "Aplicativo da Web" publicado (ver Code.gs). Vazio = usa a tabela regional.
+window._r8Backend = { url: '' };
 // Remessas por plano: 1 envio por mês (semestral = 6, anual = 12).
 window._r8Planos = {
     mensal:    { nome: 'Plano Mensal',    valor: 119.90,  rotulo: 'R$ 119,90/mês', remessas: 1 },
@@ -10927,22 +10930,27 @@ window._r8OpcoesFrete = function(end){
     }).filter(function(o){ return isFinite(o.valor) && o.valor >= 0; }).slice(0, 3);
 };
 
-window._r8CalcularFrete = function(silencioso){
-    var aviso = silencioso ? function(){} : window._r8Aviso;
-    var cep = window._r8Digitos((document.getElementById('cepAssinante')||{}).value);
-    if(cep.length !== 8){ aviso('Informe um CEP válido.'); return null; }
-    var end = window._r8EndCEP;
-    if(!end || end.cep !== cep){ aviso('Aguarde o endereço do CEP ser localizado.'); return null; }
-    var opcoes = window._r8OpcoesFrete(end);
-    var res = { cep: cep, opcoes: opcoes, escolha: null, valor: null, nome: '', prazo: '' };
-    window._r8FreteAtual = res;
-    window._r8OcultarPix();
+window._r8ConsultarBackend = function(cep){
+    var url = (window._r8Backend || {}).url;
+    if(!url) return Promise.reject(new Error('sem backend'));
+    return fetch(url + '?action=frete&destino=' + cep)
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+            var lista = ((d && d.opcoes) || []).map(function(o){
+                return { nome: String(o.nome || 'Entrega'), valor: Number(o.valor), prazo: String(o.prazo || '') };
+            }).filter(function(o){ return isFinite(o.valor) && o.valor >= 0; });
+            if(!lista.length) throw new Error('sem opções');
+            return lista;
+        });
+};
+
+window._r8RenderFrete = function(res, end){
     var local = window._r8Esc(end.cidade) + '/' + window._r8Esc(end.uf);
-    if(!opcoes.length){
+    if(!res.opcoes.length){
         window._r8MostrarFrete('<i class="fas fa-truck"></i> Frete para ' + local + ': <b>a confirmar pelo WhatsApp</b>');
     } else {
         var h = '<div><i class="fas fa-truck"></i> Frete para ' + local + ': <b>escolha uma opção</b></div>';
-        opcoes.forEach(function(o, i){
+        res.opcoes.forEach(function(o, i){
             h += '<label class="cad-frete-op" data-i="' + i + '"><input type="radio" name="freteOp" value="' + i + '">'
                + '<span class="info"><span class="nome">' + window._r8Esc(o.nome) + '</span>'
                + (o.prazo ? '<span class="prazo">Prazo: ' + window._r8Esc(o.prazo) + '</span>' : '')
@@ -10955,7 +10963,43 @@ window._r8CalcularFrete = function(silencioso){
         });
     }
     window._r8AtualizarTotal();
+};
+
+// Consulta o frete: backend (SEDEX/PAC/Expresso) e, se indisponível, a tabela regional.
+window._r8CalcularFrete = function(silencioso){
+    var aviso = silencioso ? function(){} : window._r8Aviso;
+    var cep = window._r8Digitos((document.getElementById('cepAssinante')||{}).value);
+    if(cep.length !== 8){ aviso('Informe um CEP válido.'); return null; }
+    var end = window._r8EndCEP;
+    if(!end || end.cep !== cep){ aviso('Aguarde o endereço do CEP ser localizado.'); return null; }
+    var res = { cep: cep, opcoes: [], escolha: null, valor: null, nome: '', prazo: '', pendente: true };
+    window._r8FreteAtual = res;
+    window._r8OcultarPix();
+    window._r8MostrarFrete('<i class="fas fa-truck"></i> Consultando frete para ' + window._r8Esc(end.cidade) + '/' + window._r8Esc(end.uf) + '…');
+    window._r8AtualizarTotal();
+    window._r8ConsultarBackend(cep)
+        .catch(function(){ return window._r8OpcoesFrete(end); })
+        .then(function(opcoes){
+            if(window._r8FreteAtual !== res) return; // CEP mudou durante a consulta
+            res.opcoes = opcoes.slice(0, 3);
+            res.pendente = false;
+            window._r8RenderFrete(res, end);
+        });
     return res;
+};
+
+// Registra o pedido na planilha de assinantes (envio silencioso).
+window._r8SalvarAssinatura = function(d){
+    var url = (window._r8Backend || {}).url;
+    if(!url) return;
+    var body = JSON.stringify({
+        acao: 'assinatura', data: new Date().toISOString(),
+        plano: d.plano.nome, nome: d.nome, cpf: d.cpf, celular: d.cel,
+        cep: d.cep, cidade: d.cidade, rua: d.rua, numero: d.num, bairro: d.bairro,
+        frete_modalidade: d.frete.nome || '', frete_por_envio: d.frete.valor,
+        remessas: d.remessas, frete_total: d.freteTotal, total: d.total
+    });
+    fetch(url, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' }, body: body }).catch(function(){});
 };
 
 window._r8EscolherFrete = function(i){
@@ -10985,7 +11029,7 @@ window._r8TotalAssinatura = function(){
         remessas: n,
         freteTotal: freteTotal,
         total: temFrete ? Math.round((p.valor + freteTotal) * 100) / 100 : null,
-        semOpcoes: !!(f && (!f.opcoes || !f.opcoes.length))
+        semOpcoes: !!(f && !f.pendente && (!f.opcoes || !f.opcoes.length))
     };
 };
 
@@ -10999,6 +11043,9 @@ window._r8AtualizarTotal = function(){
     if(t.frete != null){
         linhaFrete = window._r8Esc(f.nome) + (f.prazo ? ' (' + window._r8Esc(f.prazo) + ')' : '') + '<br><small>' + t.remessas + (t.remessas > 1 ? ' remessas' : ' remessa') + ' × ' + window._r8Moeda(t.frete) + '</small> <b>' + window._r8Moeda(t.freteTotal) + '</b>';
         linhaTotal = window._r8Moeda(t.total);
+    } else if(f && f.pendente){
+        linhaFrete = '<b>consultando…</b>';
+        linhaTotal = window._r8Moeda(t.plano.valor) + ' + frete';
     } else if(t.semOpcoes){
         linhaFrete = '<b>a confirmar pelo WhatsApp</b>';
         linhaTotal = window._r8Moeda(t.plano.valor) + ' + frete';
@@ -11041,8 +11088,8 @@ window._r8DadosCadastro = function(){
     }
     window._r8PlanoSel = plano;
     var frete = window._r8FreteAtual;
-    if(!frete || frete.cep !== window._r8Digitos(cep)) frete = window._r8CalcularFrete();
-    if(!frete) return null;
+    if(!frete || frete.cep !== window._r8Digitos(cep)){ window._r8CalcularFrete(); window._r8Aviso('Consultando o frete. Aguarde e tente de novo.'); return null; }
+    if(frete.pendente){ window._r8Aviso('Aguarde a consulta do frete.'); return null; }
     if(frete.opcoes && frete.opcoes.length && frete.escolha == null){
         window._r8Aviso('Escolha uma das opções de frete.');
         var bx = document.getElementById('cadFreteResultado');
@@ -11098,6 +11145,7 @@ window._r8EnviarPedido = function(){
         + '📋 DADOS:\nNome: ' + d.nome + '\nCPF: ' + d.cpf + '\nCelular/WhatsApp: ' + (d.cel || 'não informado') + '\n\n'
         + '📍 ENTREGA:\n' + d.rua + ', ' + d.num + ' - ' + d.bairro + ', ' + d.cidade + ' - CEP: ' + d.cep + '\n\n'
         + '🚚 Frete: ' + window._r8TxtFrete(d) + '\n💰 TOTAL: ' + txtTotal + '\n💳 Pagamento: PIX 52.013.107/0001-78';
+    window._r8SalvarAssinatura(d);
     window.open('https://wa.me/5547992087958?text=' + encodeURIComponent(msg), '_blank');
 };
 

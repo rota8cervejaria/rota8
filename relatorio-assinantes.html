@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rota 8 — Relatório de Assinantes</title>
+<style>
+  body{font-family:system-ui,Arial,sans-serif;margin:0;background:#f7f3ec;color:#2c1810}
+  header{background:#2c1810;color:#fff;padding:16px 20px}
+  header h1{margin:0;font-size:20px}
+  main{padding:16px;max-width:1200px;margin:0 auto}
+  .conexao{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+  input,select,button{font-size:14px;padding:8px 10px;border-radius:8px;border:1px solid #c49a2b}
+  input{flex:1;min-width:200px}
+  button{background:#c49a2b;color:#fff;border:none;cursor:pointer;font-weight:700}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:16px}
+  .card{background:#fff;border-radius:12px;padding:12px;border-left:4px solid #c49a2b}
+  .card small{opacity:.7}
+  .card b{display:block;font-size:20px;margin-top:4px}
+  .filtros{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;align-items:center}
+  .tabela-wrap{overflow-x:auto;background:#fff;border-radius:12px}
+  table{border-collapse:collapse;width:100%;font-size:13px}
+  th,td{padding:8px 10px;border-bottom:1px solid #eee;text-align:left;white-space:nowrap}
+  th{background:#f3ecdf;position:sticky;top:0}
+  .msg{padding:10px;border-radius:8px;margin-bottom:12px;display:none}
+  .msg.erro{display:block;background:#fde8e8;color:#8a1c1c}
+  .msg.ok{display:block;background:#e8f7ec;color:#1d5c2e}
+</style>
+</head>
+<body>
+<header><h1>Rota 8 Cervejaria — Relatório de Assinantes</h1></header>
+<main>
+  <div class="conexao">
+    <input id="url" placeholder="URL do Apps Script (termina em /exec)">
+    <input id="token" type="password" placeholder="Token do relatório">
+    <button id="btnCarregar">Gerar relatório</button>
+    <button id="btnCsv">Exportar CSV</button>
+  </div>
+  <div id="msg" class="msg"></div>
+  <div class="cards">
+    <div class="card"><small>Assinantes</small><b id="kTotal">—</b></div>
+    <div class="card"><small>Ativos</small><b id="kAtivos">—</b></div>
+    <div class="card"><small>Aguardando pagamento</small><b id="kPend">—</b></div>
+    <div class="card"><small>Receita (planos)</small><b id="kReceita">—</b></div>
+    <div class="card"><small>Frete total</small><b id="kFrete">—</b></div>
+  </div>
+  <div class="filtros">
+    <select id="fPlano"><option value="">Todos os planos</option></select>
+    <select id="fStatus"><option value="">Todos os status</option></select>
+    <input id="fBusca" placeholder="Buscar por nome ou cidade">
+    <small id="atualizado"></small>
+  </div>
+  <div class="tabela-wrap">
+    <table>
+      <thead><tr><th>Data</th><th>Plano</th><th>Nome</th><th>CPF</th><th>Cidade</th><th>CEP</th><th>Frete</th><th>Remessas</th><th>Frete total</th><th>Total</th><th>Status</th></tr></thead>
+      <tbody id="corpo"><tr><td colspan="11">Informe a URL e o token e clique em "Gerar relatório".</td></tr></tbody>
+    </table>
+  </div>
+</main>
+<script>
+var dados = [];
+var STORE = 'r8RelatorioUrl';
+
+function msg(t, tipo){ var m = document.getElementById('msg'); m.textContent = t; m.className = 'msg ' + (tipo||'ok'); }
+function moeda(v){ return Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}); }
+function mascaraCpf(c){ var d = String(c||'').replace(/\D/g,''); return d.length === 11 ? '***.***.' + d.slice(6,9) + '-' + d.slice(9) : '—'; }
+function dataBr(v){ var d = new Date(v); return isNaN(d) ? String(v||'') : d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+
+function carregar(){
+  var url = document.getElementById('url').value.trim();
+  var token = document.getElementById('token').value.trim();
+  if(!url || !token){ msg('Preencha a URL e o token.', 'erro'); return; }
+  localStorage.setItem(STORE, url);
+  msg('Carregando…');
+  fetch(url + '?action=relatorio&token=' + encodeURIComponent(token))
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(d.erro) throw new Error(d.erro);
+      dados = d.linhas || [];
+      preencherFiltros();
+      atualizar();
+      document.getElementById('atualizado').textContent = d.atualizado ? 'Atualizado em ' + dataBr(d.atualizado) : '';
+      msg(dados.length + ' assinante(s) carregado(s).', 'ok');
+    })
+    .catch(function(e){ msg('Não foi possível carregar: ' + e.message, 'erro'); });
+}
+
+function preencherFiltros(){
+  var planos = [], status = [];
+  dados.forEach(function(r){
+    if(r.Plano && planos.indexOf(r.Plano) < 0) planos.push(r.Plano);
+    if(r.Status && status.indexOf(r.Status) < 0) status.push(r.Status);
+  });
+  var fp = document.getElementById('fPlano'), fs = document.getElementById('fStatus');
+  fp.innerHTML = '<option value="">Todos os planos</option>' + planos.map(function(p){ return '<option>'+esc(p)+'</option>'; }).join('');
+  fs.innerHTML = '<option value="">Todos os status</option>' + status.map(function(s){ return '<option>'+esc(s)+'</option>'; }).join('');
+}
+
+function filtrados(){
+  var plano = document.getElementById('fPlano').value, st = document.getElementById('fStatus').value;
+  var busca = document.getElementById('fBusca').value.trim().toLowerCase();
+  return dados.filter(function(r){
+    if(plano && r.Plano !== plano) return false;
+    if(st && r.Status !== st) return false;
+    if(busca && !(String(r.Nome||'') + ' ' + String(r.Cidade||'')).toLowerCase().includes(busca)) return false;
+    return true;
+  });
+}
+
+function atualizar(){
+  var lista = filtrados();
+  var ativos = dados.filter(function(r){ return r.Status === 'Ativo'; });
+  var pend = dados.filter(function(r){ return r.Status === 'Aguardando pagamento'; });
+  var receita = ativos.reduce(function(s,r){ return s + Number(r.Total||0); }, 0);
+  var frete = ativos.reduce(function(s,r){ return s + Number(r['Frete total']||0); }, 0);
+  document.getElementById('kTotal').textContent = dados.length;
+  document.getElementById('kAtivos').textContent = ativos.length;
+  document.getElementById('kPend').textContent = pend.length;
+  document.getElementById('kReceita').textContent = moeda(receita);
+  document.getElementById('kFrete').textContent = moeda(frete);
+  var corpo = document.getElementById('corpo');
+  if(!lista.length){ corpo.innerHTML = '<tr><td colspan="11">Nenhum assinante encontrado.</td></tr>'; return; }
+  corpo.innerHTML = lista.map(function(r){
+    return '<tr><td>'+dataBr(r.Data)+'</td><td>'+esc(r.Plano)+'</td><td>'+esc(r.Nome)+'</td><td>'+mascaraCpf(r.CPF)+'</td>'
+      +'<td>'+esc(r.Cidade)+'</td><td>'+esc(r.CEP)+'</td><td>'+esc(r['Frete modalidade'])+' '+moeda(r['Frete por envio'])+'</td>'
+      +'<td>'+esc(r.Remessas)+'</td><td>'+moeda(r['Frete total'])+'</td><td>'+moeda(r.Total)+'</td><td>'+esc(r.Status)+'</td></tr>';
+  }).join('');
+}
+
+function exportarCsv(){
+  var cab = ['Data','Plano','Nome','CPF (mascarado)','Celular','CEP','Cidade','Rua','Número','Bairro','Frete modalidade','Frete por envio','Remessas','Frete total','Total','Status'];
+  var linhas = filtrados().map(function(r){
+    return [dataBr(r.Data), r.Plano, r.Nome, mascaraCpf(r.CPF), r.Celular, r.CEP, r.Cidade, r.Rua, r.Número, r.Bairro,
+            r['Frete modalidade'], r['Frete por envio'], r.Remessas, r['Frete total'], r.Total, r.Status]
+      .map(function(v){ return '"' + String(v==null?'':v).replace(/"/g,'""') + '"'; }).join(';');
+  });
+  var blob = new Blob(['\uFEFF' + cab.join(';') + '\n' + linhas.join('\n')], {type:'text/csv;charset=utf-8'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'assinantes-rota8.csv'; a.click();
+}
+
+document.getElementById('btnCarregar').onclick = carregar;
+document.getElementById('btnCsv').onclick = exportarCsv;
+['fPlano','fStatus','fBusca'].forEach(function(id){ document.getElementById(id).oninput = atualizar; });
+document.getElementById('url').value = localStorage.getItem(STORE) || '';
+</script>
+</body>
+</html>
