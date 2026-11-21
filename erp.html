@@ -28,7 +28,7 @@
     // aparelhos (link, app, qualquer celular/tablet), assim que tiverem
     // internet — sem nenhuma ação do usuário.
     // ══════════════════════════════════════════════════════════════════
-    window.R8_BUILD = '2026-11-16-3';
+    window.R8_BUILD = '2026-11-21-15';
     // Endereço público do sistema (usado nos QR Codes de lote, barril, equipamento e câmara fria). Para trocar de domínio, altere só esta linha.
     window.R8_URL_PUBLICA = 'https://rota8cervejaria.com.br';
     // Data de hoje (AAAA-MM-DD) no horário LOCAL — toISOString() usa UTC e, depois das 21h no Brasil, devolvia amanhã.
@@ -3950,11 +3950,11 @@ window.zerarDadosMantendoCadastrosERP = function() {
 
             // 2) Monta o novo estado: tudo vazio, exceto os 3 cadastros mantidos
             setTimeout(function() {
-                var MANTER = ['equipamentos', 'aguas', 'barris'];
+                var MANTER = ['equipamentos', 'aguas', 'barris', 'clientes'];
                 var atual = JSON.parse(JSON.stringify(dadosERP));
                 var novo = {};
                 ['estilos','insumos','sais','produtosLimpeza','fichasTecnicas','sanitizacoes','envases',
-                 'produtosAcabados','movimentacoesEstoque','pasteurizacoes','vendasPDV','vendasTaps',
+                 'produtosAcabados','movimentacoesEstoque','pasteurizacoes','vendasPDV','vendasTaps','vendasAssinantes',
                  'receitasImportadas','auditoria','metas','analisesSensoriais','medicoesCamara',
                  'recebimentosBarris'].forEach(function(k){ novo[k] = []; });
                 MANTER.forEach(function(k){ novo[k] = atual[k] || []; });
@@ -5126,7 +5126,7 @@ window.abrirTransferenciaLote = function() {
     if (!pas.length) { R8.toast.aviso('Não há barril com saldo em Câmara Fria para transferir.'); return; }
     var ocupTrf = window._r8TrfBarrisOcupados();
     var barrisLivres = (dadosERP.barris || []).filter(function(b) { return b.status === 'Disponível' && !ocupTrf[b.codigo]; });
-    if (!barrisLivres.length) { R8.toast.aviso('Não há barril disponível para receber a transferência.'); return; }
+    if (!barrisLivres.length) { R8.toast.aviso('Sem barril livre: só é possível transferir para Latas.'); }
     var lotesOrig = [];
     pas.forEach(function(p) { if (lotesOrig.indexOf(p.lote) === -1) lotesOrig.push(p.lote); });
     var optOrig = lotesOrig.map(function(l) { return '<option value="' + R8.esc(l) + '">' + R8.esc(l) + '</option>'; }).join('');
@@ -5145,13 +5145,16 @@ window.abrirTransferenciaLote = function() {
     var html = '<div id="_r8ModalTransf" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9000;display:flex;align-items:center;justify-content:center;padding:16px">'
         + '<div style="background:#fff;border-radius:16px;width:100%;max-width:440px;max-height:92vh;overflow:auto;padding:18px 18px 14px;box-sizing:border-box">'
         + '<h3 style="margin:0 0 6px;font-family:\'Bebas Neue\',sans-serif;font-weight:400;font-size:26px;color:#2c1810">Transferir entre lotes</h3>'
-        + '<p style="margin:0;font-size:12px;color:#64748b">O volume sai do barril de origem e entra em um barril do novo lote. Nenhum insumo é baixado automaticamente.</p>'
+        + '<p style="margin:0;font-size:12px;color:#64748b">O volume sai do barril de origem e entra no destino escolhido: um novo lote em barril ou o envase em latas, garrafas ou growlers. Nenhum insumo é baixado automaticamente.</p>'
         + '<label style="' + lab + '">Lote de origem</label><select id="trfLoteOrig" onchange="window._r8TrfBarrisDoLote()" style="' + css + '">' + optOrig + '</select>'
         + '<label style="' + lab + '">Barril de origem (envasado neste lote)</label><select id="trfOrigem" style="' + css + '"></select>'
+        
+        + '<label style="' + lab + '">Novo lote (vazio = mesmo lote)</label><input type="text" id="trfLote" placeholder="Ex.: ...A para lote novo" style="' + css + '">'
+        + '<label style="' + lab + '">Novo produto (estilo) (opcional)</label><input type="text" id="trfEstilo" placeholder="Igual ao de origem se vazio" style="' + css + '">'
+        + '<label style="' + lab + '">Destino</label><select id="trfTipoDest" onchange="window._r8TrfModo()" style="' + css + '">' + '<option value="Barril">Barril (novo lote em barril)</option>' + '<option value="Latas">Latas (473 ml)</option>' + '<option value="Garrafa">Garrafa (750 ml)</option>' + '<option value="Garrafa500">Garrafa (500 ml)</option>' + '<option value="Growler500">Growler PET (500 ml)</option>' + '<option value="Growler1000">Growler PET (1000 ml)</option>' + '</select>'
+        + '<div id="trfBarrilWrap"><label style="' + lab + '">Barril de destino</label><select id="trfBarril" style="' + css + '">' + optBar + '</select></div>'
+        + '<div id="trfLatasWrap" style="display:none"><label style="' + lab + '">Quantidade (un) *</label><input type="number" step="1" min="1" id="trfUn" oninput="window._r8TrfModo()" placeholder="-" style="' + css + '"></div>'
         + '<label style="' + lab + '">Volume a transferir (L)</label><input type="number" step="0.01" min="0" id="trfVolume" placeholder="-" style="' + css + '">'
-        + '<label style="' + lab + '">Novo lote</label><input type="text" id="trfLote" placeholder="Código do novo lote" style="' + css + '">'
-        + '<label style="' + lab + '">Novo produto (estilo)</label><input type="text" id="trfEstilo" placeholder="Ex.: IPA com tangerina" style="' + css + '">'
-        + '<label style="' + lab + '">Barril de destino</label><select id="trfBarril" style="' + css + '">' + optBar + '</select>'
         + '<label style="' + lab + '">Adição feita (registro na ficha, baixa manual)</label><select id="trfInsumo" onchange="window._r8TrfLotesInsumo()" style="' + css + '">' + optIns + '</select>'
         + '<div id="trfInsumoLoteWrap" style="display:none"><label style="' + lab + '">Lote de compra usado *</label><select id="trfInsumoLote" style="' + css + '"></select></div>'
         + '<label style="' + lab + '">Quantidade da adição (g ou ml)</label><input type="number" step="0.1" min="0" id="trfInsumoQtd" placeholder="-" style="' + css + '">'
@@ -5178,30 +5181,129 @@ window._r8TrfLotesInsumo = function() {
     wrap.style.display = '';
 };
 
+window._r8EnvasesDeTransferencia = function(f) {
+    var t = f.transferencia;
+    if (!t || !(t.volume > 0)) return [];
+    if (t.barrilDestino) {
+        var b = (dadosERP.barris || []).find(function(x) { return x.codigo === t.barrilDestino; });
+        return [{ tipo: (b && b.tipo) || 'Barril', embalagemCodigo: t.barrilDestino, embalagemDescricao: (b && b.descricao) || '', volume: t.volume, volumeTotal: t.volume, data: t.data || '' }];
+    }
+    return [{ tipo: t.tipoDestino || 'Lata', embalagemCodigo: '', embalagemDescricao: t.volumeUnitarioMl ? (t.volumeUnitarioMl + ' ml') : '', volume: t.volume, volumeTotal: t.volume, data: t.data || '' }];
+};
+window._r8FormatoDestino = function(v) {
+    var F = {
+        Latas: { tipo: 'Lata', ml: 473, localizacao: 'Envase Latas', code: '' },
+        Garrafa: { tipo: 'Garrafa', ml: 750, localizacao: 'Envase Garrafas', code: 'GARRAFA-750' },
+        Garrafa500: { tipo: 'Garrafa', ml: 500, localizacao: 'Envase Garrafas', code: 'GARRAFA-500' },
+        Growler500: { tipo: 'Growler PET', ml: 500, localizacao: 'Envase Growler', code: 'GROWLER-500' },
+        Growler1000: { tipo: 'Growler PET', ml: 1000, localizacao: 'Envase Growler', code: 'GROWLER-1000' }
+    };
+    return F[v] || null;
+};
+window._r8LocalizacaoEnvase = function(tipo) {
+    return { 'Lata': 'Envase Latas', 'Garrafa': 'Envase Garrafas', 'Growler PET': 'Envase Growler' }[tipo] || null;
+};
+window._r8EhEnvaseNaoBarril = function(p) {
+    return ['Lata', 'Garrafa', 'Growler PET'].indexOf(p.tipoEmbalagem || '') > -1;
+};
+window._r8MlEnvase = function(p) {
+    var COD = { 'GARRAFA-750': 750, 'GARRAFA-500': 500, 'GROWLER-500': 500, 'GROWLER-1000': 1000 };
+    if (COD[p.embalagemCodigo]) return COD[p.embalagemCodigo];
+    if (p.volumeUnitarioMl) return p.volumeUnitarioMl;
+    if (p.tipoEmbalagem === 'Lata') return 473;
+    if (p.tipoEmbalagem === 'Garrafa') return 750;
+    var d = (p.embalagemDescricao || '') + ' ' + (p.embalagemCodigo || '');
+    return /1\s*L|1000/i.test(d) ? 1000 : 500;
+};
+window._r8ComCodigoEnvase = function(e) {
+    if (!e || e.embalagemCodigo) return e;
+    var t = e.tipo || '';
+    if (t !== 'Garrafa' && t !== 'Growler PET') return e;
+    var d = (e.embalagemDescricao || '') + ' ' + (e.volumeUnitarioMl || '');
+    var ml = e.volumeUnitarioMl || (t === 'Garrafa' ? (/500/.test(d) ? 500 : 750) : (/1000|1\s*L/i.test(d) ? 1000 : 500));
+    return Object.assign({}, e, { embalagemCodigo: (t === 'Garrafa' ? 'GARRAFA-' : 'GROWLER-') + ml, volumeUnitarioMl: ml });
+};
+window._r8LoteAuto = function(loteOrig) {
+    var lote, k = 1;
+    do {
+        lote = loteOrig + '-T' + k; k++;
+    } while ((dadosERP.produtosAcabados || []).some(function(x) { return x.lote === lote; })
+        || (dadosERP.fichasTecnicas || []).some(function(f) { return f.lote === lote; }));
+    return lote;
+};
+window._renderEnvasadoPA = function() {
+    var el = document.getElementById('envasadoPA');
+    if (!el) return;
+    var regs = (dadosERP.produtosAcabados || []).filter(function(p) { return window._r8EhEnvaseNaoBarril(p) && (p.camaraFria || 0) > 0; });
+    var linhas = [
+        { rot: 'Latas 473 ml', ml: 473, f: function(p) { return p.tipoEmbalagem === 'Lata'; } },
+        { rot: 'Garrafas 750 ml', ml: 750, f: function(p) { return p.tipoEmbalagem === 'Garrafa' && window._r8MlEnvase(p) === 750; } },
+        { rot: 'Garrafas 500 ml', ml: 500, f: function(p) { return p.tipoEmbalagem === 'Garrafa' && window._r8MlEnvase(p) === 500; } },
+        { rot: 'Growler PET 500 ml', ml: 500, f: function(p) { return p.tipoEmbalagem === 'Growler PET' && window._r8MlEnvase(p) === 500; } },
+        { rot: 'Growler PET 1000 ml', ml: 1000, f: function(p) { return p.tipoEmbalagem === 'Growler PET' && window._r8MlEnvase(p) === 1000; } }
+    ];
+    var totU = 0, totL = 0;
+    var linhasHtml = linhas.map(function(ln) {
+        var rs = regs.filter(ln.f);
+        var L = rs.reduce(function(a, p) { return a + (p.camaraFria || 0); }, 0);
+        var U = Math.round(L * 1000 / ln.ml);
+        totU += U; totL += L;
+        return '<div style="display:flex;justify-content:space-between;padding:9px 0;border-top:1px solid #f1f5f9;font-size:13px">'
+            + '<span style="color:#1e293b;font-weight:600">' + ln.rot + '</span>'
+            + '<span style="color:#1e293b">' + U + ' un · ' + L.toFixed(2) + ' L</span></div>';
+    }).join('');
+    el.innerHTML = '<div style="background:#fff;border:1px solid #c49a2b;border-radius:14px;padding:12px 16px;margin:12px 0">'
+        + '<div style="display:flex;justify-content:space-between;align-items:center">'
+        + '<span style="font-family:\'Bebas Neue\',sans-serif;font-size:20px;letter-spacing:1.5px;color:#2c1810">ENVASADO</span>'
+        + '<span style="font-weight:700;color:#15803d">' + totU + ' un · ' + totL.toFixed(2) + ' L</span></div>'
+        + linhasHtml + '</div>';
+};
+window._r8TrfModo = function() {
+    var t = document.getElementById('trfTipoDest');
+    var fmt = window._r8FormatoDestino(t ? t.value : 'Barril');
+    var bw = document.getElementById('trfBarrilWrap'), uw = document.getElementById('trfLatasWrap'), vol = document.getElementById('trfVolume');
+    if (bw) bw.style.display = fmt ? 'none' : '';
+    if (uw) uw.style.display = fmt ? '' : 'none';
+    if (vol) {
+        vol.readOnly = !!fmt;
+        if (fmt) {
+            var n = parseInt((document.getElementById('trfUn') || {}).value, 10);
+            vol.value = n > 0 ? (Math.round(n * fmt.ml) / 1000).toFixed(3) : '';
+        }
+    }
+};
+
 window.confirmarTransferenciaLote = function() {
     var g = function(id) { var el = document.getElementById(id); return el ? el.value : ''; };
     var chave = g('trfOrigem');
-    var vol = parseFloat(g('trfVolume'));
+    var fmt = window._r8FormatoDestino(g('trfTipoDest') || 'Barril');
+    var modoLatas = !!fmt;
+    var nLatas = parseInt(g('trfUn'), 10) || 0;
+    if (modoLatas && !(nLatas > 0)) { R8.toast.aviso('Informe a quantidade em unidades.'); return; }
+    var vol = modoLatas ? Math.round(nLatas * fmt.ml) / 1000 : parseFloat(g('trfVolume'));
     var loteNovo = String(g('trfLote') || '').trim();
     var estiloNovo = String(g('trfEstilo') || '').trim();
     var barrilDest = g('trfBarril');
     var insCod = g('trfInsumo');
     var insQtd = parseFloat(g('trfInsumoQtd')) || 0;
     var obs = g('trfObs');
+    if (modoLatas && g('trfInsumo')) { R8.toast.aviso('Adição de insumo só vale para transferência para barril. Remova a adição.'); return; }
     var p = _r8ProdutoPorChave(chave);
     if (!p) { R8.toast.aviso('Selecione o barril de origem.'); return; }
     var saldo = parseFloat(p.camaraFria) || 0;
     if (!(vol > 0)) { R8.toast.aviso('Informe o volume a transferir.'); return; }
     if (vol > saldo + 0.001) { R8.toast.erro('Volume maior que o saldo do barril de origem (' + saldo.toFixed(2) + ' L).'); return; }
-    if (loteNovo.length < 2) { R8.toast.aviso('Informe o código do novo lote.'); return; }
-    if (loteNovo === p.lote) { R8.toast.aviso('O novo lote precisa ser diferente do lote de origem.'); return; }
+    if (modoLatas || !loteNovo) loteNovo = p.lote;
+    var mesmoLote = (loteNovo === p.lote);
+    if (!mesmoLote && !(loteNovo.indexOf(p.lote) === 0 && /^[A-Z]$/.test(loteNovo.slice(p.lote.length)))) { R8.toast.aviso('Para lote novo, use o lote original seguido de letra (ex.: ' + p.lote + 'A).'); return; }
+    if (mesmoLote && g('trfInsumo')) { R8.toast.aviso('Adição de insumo exige lote novo (ex.: ' + p.lote + 'A).'); return; }
     var loteUsado = (dadosERP.produtosAcabados || []).some(function(x) { return x.lote === loteNovo; })
         || (dadosERP.fichasTecnicas || []).some(function(f) { return f.lote === loteNovo; });
-    if (loteUsado) { R8.toast.erro('O lote ' + loteNovo + ' já existe. Use outro código.'); return; }
-    if (!estiloNovo) { R8.toast.aviso('Informe o novo produto (estilo).'); return; }
-    var barril = (dadosERP.barris || []).find(function(b) { return b.codigo === barrilDest; });
-    if (!barril || barril.status !== 'Disponível' || window._r8TrfBarrisOcupados()[barrilDest]) { R8.toast.aviso('Selecione um barril de destino disponível (sem saldo e fora de uso).'); return; }
-    if (barrilDest === p.embalagemCodigo) { R8.toast.aviso('O barril de destino não pode ser o mesmo da origem.'); return; }
+    if (loteUsado && !mesmoLote) { R8.toast.erro('O lote ' + loteNovo + ' já existe. Use outro código.'); return; }
+    if (!estiloNovo) estiloNovo = p.estilo || '';
+    var barril = modoLatas ? { tipo: 'Lata', status: 'Disponível' } : (dadosERP.barris || []).find(function(b) { return b.codigo === barrilDest; });
+    if (!modoLatas && (!barril || barril.status !== 'Disponível' || window._r8TrfBarrisOcupados()[barrilDest])) { R8.toast.aviso('Selecione um barril de destino disponível (sem saldo e fora de uso).'); return; }
+    if (!modoLatas && barrilDest === p.embalagemCodigo) { R8.toast.aviso('O barril de destino não pode ser o mesmo da origem.'); return; }
 
     // Lote de compra da adição: grava a origem na ficha; lote vencido pede confirmação (antes de alterar qualquer dado)
     var insLoteReg = null, insVencido = false;
@@ -5239,16 +5341,40 @@ window.confirmarTransferenciaLote = function() {
         }
     }
 
-    // 2) Destino: novo lote no barril escolhido
+    // 2) Destino: envase soma no lote de origem; barril cria o novo lote
     if (!dadosERP.produtosAcabados) dadosERP.produtosAcabados = [];
-    dadosERP.produtosAcabados.push({
-        lote: loteNovo, estilo: estiloNovo, tipoEmbalagem: barril.tipo || 'Barril', embalagemCodigo: barrilDest,
-        dataEnvase: hoje, quantidade: vol, localizacao: 'Câmara Fria', status: 'Disponível',
-        pdv: 0, camaraFria: vol, taps: 0, loteOrigem: loteOrig
-    });
-    barril.status = 'Em Uso';
-    barril.loteAtual = loteNovo;
+    if (modoLatas) {
+        var exEnv = dadosERP.produtosAcabados.find(function(x) { return x.lote === loteOrig && (x.tipoEmbalagem || '') === fmt.tipo && (x.embalagemCodigo || '') === fmt.code; });
+        if (exEnv) {
+            exEnv.quantidade = parseFloat(((exEnv.quantidade || 0) + vol).toFixed(2));
+            exEnv.camaraFria = parseFloat(((exEnv.camaraFria || 0) + vol).toFixed(2));
+            exEnv.latasQtd = (exEnv.latasQtd || 0) + nLatas;
+            exEnv.status = exEnv.camaraFria < 10 ? 'Baixo' : 'Disponível';
+        } else {
+            dadosERP.produtosAcabados.push({
+                lote: loteOrig, estilo: p.estilo || '', tipoEmbalagem: fmt.tipo, embalagemCodigo: fmt.code,
+                embalagemDescricao: fmt.ml + ' ml', dataEnvase: hoje, quantidade: vol, localizacao: fmt.localizacao,
+                status: 'Disponível', pdv: 0, camaraFria: vol, taps: 0, loteOrigem: loteOrig, latasQtd: nLatas, volumeUnitarioMl: fmt.ml
+            });
+        }
+    } else {
+        dadosERP.produtosAcabados.push({
+            lote: loteNovo, estilo: estiloNovo, tipoEmbalagem: barril.tipo || 'Barril', embalagemCodigo: barrilDest,
+            dataEnvase: hoje, quantidade: vol, localizacao: 'Câmara Fria', status: 'Disponível',
+            pdv: 0, camaraFria: vol, taps: 0, loteOrigem: loteOrig, latasQtd: 0, volumeUnitarioMl: 0
+        });
+        barril.status = 'Em Uso';
+        barril.loteAtual = loteNovo;
+    }
 
+    if (mesmoLote) {
+        var fo = (dadosERP.fichasTecnicas || []).find(function(f) { return f.lote === loteOrig; });
+        if (fo) {
+            if (!fo.envases) fo.envases = [];
+            if (modoLatas) fo.envases.push({ tipo: fmt.tipo, embalagemCodigo: fmt.code, embalagemDescricao: fmt.ml + ' ml', volume: vol, volumeTotal: vol, data: hoje, volumeUnitarioMl: fmt.ml, unidades: nLatas });
+            else fo.envases.push({ tipo: barril.tipo || 'Barril', embalagemCodigo: barrilDest, embalagemDescricao: barril.descricao || '', volume: vol, volumeTotal: vol, data: hoje });
+        }
+    } else {
     // 3) Ficha própria do novo lote: cópia da ficha de origem + adição registrada
     var fichaOrig = (dadosERP.fichasTecnicas || []).find(function(f) { return f.lote === loteOrig; });
     var ficha = fichaOrig ? JSON.parse(JSON.stringify(fichaOrig)) : { insumos: [], lupulos: [], leveduras: [] };
@@ -5256,12 +5382,12 @@ window.confirmarTransferenciaLote = function() {
     ficha.lote = loteNovo;
     ficha.estilo = estiloNovo;
     ficha.statusLote = 'finalizado';
-    ficha.envases = [];
+    ficha.envases = [{ tipo: modoLatas ? fmt.tipo : (barril.tipo || 'Barril'), embalagemCodigo: modoLatas ? fmt.code : barrilDest, embalagemDescricao: modoLatas ? (fmt.ml + ' ml') : (barril.descricao || ''), volume: vol, volumeTotal: vol, data: hoje, volumeUnitarioMl: modoLatas ? fmt.ml : 0, unidades: modoLatas ? nLatas : 0 }];
     ficha.tanque = '';
     ficha.legado = false;
     ficha.dataProducao = hoje;
     ficha.semBaixaAutomatica = true;
-    ficha.transferencia = { de: loteOrig, volume: vol, barrilOrigem: barrilOrig, barrilDestino: barrilDest, data: hoje, obs: obs };
+    ficha.transferencia = { de: loteOrig, volume: vol, barrilOrigem: barrilOrig, barrilDestino: barrilDest, data: hoje, obs: obs, tipoDestino: modoLatas ? fmt.tipo : 'Barril', unidades: modoLatas ? nLatas : 0, volumeUnitarioMl: modoLatas ? fmt.ml : 0 };
     if (insCod) {
         var insRef = (dadosERP.insumos || []).find(function(i) { return i.codigo === insCod; });
         if (!ficha.insumos) ficha.insumos = [];
@@ -5270,6 +5396,7 @@ window.confirmarTransferenciaLote = function() {
         ficha.insumos.push(insItem);
     }
     dadosERP.fichasTecnicas.push(ficha);
+    }
 
     // 4) Razão de movimentações: saída na origem, entrada no destino (sem insumo)
     if (!dadosERP.movimentacoesEstoque) dadosERP.movimentacoesEstoque = [];
@@ -5281,7 +5408,7 @@ window.confirmarTransferenciaLote = function() {
     });
     dadosERP.movimentacoesEstoque.push({
         id: Date.now() + '_trf_in', data: agora, tipo: 'entrada', produto: estiloNovo, lote: loteNovo,
-        tipoEmbalagem: barril.tipo || 'Barril', embalagemCodigo: barrilDest, quantidade: vol, unidade: 'L',
+        tipoEmbalagem: modoLatas ? fmt.tipo : (barril.tipo || 'Barril'), embalagemCodigo: modoLatas ? '' : barrilDest, quantidade: vol, unidade: 'L',
         origem: 'Transferência do lote ' + loteOrig, obs: obs, saldoAnterior: 0, saldoAtual: vol
     });
 
@@ -7744,6 +7871,7 @@ window._r8AbrirFinanceiro = function(pagina) {
 
 window._erp_tela_titulos.telaPlanejamento = 'Planejamento';
 window._erp_tela_titulos.telaZonaPerigo = 'Zona de Perigo';
+window._erp_tela_titulos.telaClientes = 'Clientes';
 window.irParaTelaERP = function(id) {
     if ((id === 'telaCustos' || id === 'telaDRE' || id === 'telaFinanceiro') && !window._r8ExigirAdmin('O módulo Financeiro é restrito a Administradores.')) return;
     if (id === 'telaGerenciarUsuarios' && !window._r8ExigirAdmin('Gerenciar Usuários é restrito a Administradores.')) return;
@@ -7761,6 +7889,10 @@ window.irParaTelaERP = function(id) {
     if(id==='telaDashboard') setTimeout(renderDashboard, 80);
     if(id==='telaMenu') setTimeout(_renderizarAlertasEstoque, 50);
     if(id==='telaGerenciarUsuarios') setTimeout(_renderGerenciarUsuarios, 50);
+    if(id==='telaClientes') setTimeout(window._renderClientes, 50);
+    if(id==='telaVendasPDV') setTimeout(function(){ window._vendaCliPopular('PDV'); }, 60);
+    if(id==='telaVendasTAP') setTimeout(function(){ window._vendaCliPopular('TAP'); }, 60);
+    if(id==='telaVendasAssinantes') setTimeout(function(){ window._vendaCliPopular('ASS'); window._popularLotesLataASS(); window._renderListaAssinantes(); }, 60);
     setTimeout(window._atualizarIndicadoresAlerta, 60);
     if(id==='telaInsumos') atualizarListaInsumosERP();
     if(id==='telaEquipamentos') atualizarListaEquipamentosERP();
@@ -12312,9 +12444,83 @@ function _htmlSaldoResumo(categoria) {
 }
 // Saldo Atual — apresentação clara para Gestão > Produto Acabado.
 // Mesma regra de agrupamento por lote do _htmlSaldoResumo('produtoAcabado').
+window._htmlSaldoCardsPA = function() {
+    var E = function(x) { return R8.esc(x == null ? '' : String(x)); };
+    var lotes = {}, ordem = [];
+    (dadosERP.produtosAcabados || []).forEach(function(p) {
+        if (!p.lote) return;
+        if (!lotes[p.lote]) {
+            lotes[p.lote] = { lote: p.lote, estilo: p.estilo || '', cf: 0, latas: 0, g750: 0, g500: 0, gr500: 0, gr1000: 0 };
+            ordem.push(p.lote);
+        }
+        var L = p.camaraFria || 0, it = lotes[p.lote];
+        if (window._r8EhEnvaseNaoBarril(p)) {
+            var ml = window._r8MlEnvase(p);
+            var u = Math.round(L * 1000 / ml);
+            if (p.tipoEmbalagem === 'Lata') it.latas += u;
+            else if (p.tipoEmbalagem === 'Garrafa') { if (ml === 500) it.g500 += u; else it.g750 += u; }
+            else if (p.tipoEmbalagem === 'Growler PET') { if (ml === 1000) it.gr1000 += u; else it.gr500 += u; }
+        } else {
+            it.cf += L;
+        }
+    });
+    if (!ordem.length) return '<div style="padding:18px;text-align:center;color:#64748b;font-size:13px">Nenhum lote em estoque.</div>';
+
+    var totalCF = ordem.reduce(function(a, l) { return a + lotes[l].cf; }, 0);
+    var dourado = 'border:2px solid #c49a2b;box-shadow:0 6px 18px rgba(196,154,43,.22);';
+    var html = '<div style="' + dourado + 'border-radius:18px;background:linear-gradient(180deg,#fffdf7,#ffffff);padding:14px 16px;margin:12px 0">'
+        + '<div style="font-size:11px;font-weight:700;letter-spacing:1.5px;color:#6b7280;text-transform:uppercase">Câmara Fria</div>'
+        + '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">'
+        + '<span style="font-size:12px;color:#94a3b8">' + ordem.length + (ordem.length === 1 ? ' lote' : ' lotes') + '</span>'
+        + '<span style="font-size:24px;font-weight:800;white-space:nowrap;color:' + (totalCF >= 50 ? '#166534' : '#b91c1c') + '">' + totalCF.toFixed(2).replace('.', ',') + ' LITROS</span>'
+        + '</div></div>';
+
+    ordem.forEach(function(k) {
+        var it = lotes[k];
+        var corCF = it.cf >= 50 ? '#166534' : '#b91c1c';
+        var campo = function(rotulo, valor) {
+            return '<div style="background:#faf7ef;border:1px solid #ead9b0;border-radius:12px;padding:7px 8px;min-width:0;box-sizing:border-box">'
+                + '<div style="font-size:9px;font-weight:700;letter-spacing:.2px;color:#6b7280;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + rotulo + '</div>'
+                + '<div style="font-size:15px;font-weight:800;color:#1f2937;margin-top:2px">' + valor + ' <span style="font-size:11px;font-weight:600;color:#6b7280">un</span></div>'
+                + '</div>';
+        };
+        html += '<div style="' + dourado + 'border-radius:18px;background:#ffffff;padding:14px 12px;margin:12px 0;box-sizing:border-box;overflow:hidden">'
+            + '<div style="font-size:15px;font-weight:800;color:#1e3a8a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">LOTE ' + E(it.lote).toUpperCase() + '</div>'
+            + '<div style="font-size:12px;font-weight:700;color:#4b5563;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px">' + E(it.estilo).toUpperCase() + '</div>'
+            + '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding-top:12px;border-top:1px dashed #d8c48f">'
+            + '<span style="font-size:11px;font-weight:700;letter-spacing:1px;color:#6b7280;text-transform:uppercase;white-space:nowrap">Câmara Fria</span>'
+            + '<span style="font-size:22px;font-weight:800;white-space:nowrap;color:' + corCF + '">' + it.cf.toFixed(2).replace('.', ',') + ' LITROS</span>'
+            + '</div>'
+            + '<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px;width:100%;box-sizing:border-box">'
+            + campo('Latas 473 ml', it.latas)
+            + campo('Garrafas 750 ml', it.g750)
+            + campo('Garrafas 500 ml', it.g500)
+            + campo('Growler PET 500 ml', it.gr500)
+            + campo('Growler PET 1000 ml', it.gr1000)
+            + '</div></div>';
+    });
+    return html;
+};
+
+window._r8EhLata = function(p) { return (p.tipoEmbalagem || '') === 'Lata' && !p.embalagemCodigo; };
+window._htmlEnvaseLatas = function() {
+    var latas = (dadosERP.produtosAcabados || []).filter(function(p) { return window._r8EhLata(p) && (p.camaraFria || 0) > 0; });
+    if (!latas.length) return '';
+    var h = '<div style="margin-top:14px;background:#fff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden">'
+        + '<div style="padding:12px 16px;background:#eff6ff;font-weight:700;color:#1d4ed8;font-size:13px">Envase Latas (estoque para Assinantes e PDV)</div>';
+    latas.forEach(function(p) {
+        var n = Math.floor((p.camaraFria || 0) / 0.473);
+        h += '<div style="padding:10px 16px;border-top:1px solid #f1f5f9;display:flex;justify-content:space-between;gap:10px">'
+            + '<div><div style="font-size:14px;font-weight:600;color:#1e293b">' + R8.esc(p.estilo || p.lote) + '</div>'
+            + '<div style="font-size:12px;color:#64748b">Lote ' + R8.esc(p.lote) + '</div></div>'
+            + '<div style="text-align:right"><div style="font-weight:700;color:#1d4ed8">' + n + ' latas</div>'
+            + '<div style="font-size:12px;color:#64748b">' + (p.camaraFria || 0).toFixed(2) + ' L</div></div></div>';
+    });
+    return h + '</div>';
+};
 function _htmlSaldoDestaquePA() {
     var somaLotePA = {};
-    (dadosERP.produtosAcabados||[]).forEach(function(p){
+    (dadosERP.produtosAcabados||[]).filter(function(p){ return !window._r8EhEnvaseNaoBarril(p); }).forEach(function(p){
         if (!somaLotePA[p.lote]) somaLotePA[p.lote] = { nome:(p.estilo||p.lote), lote:p.lote, qtd:0 };
         somaLotePA[p.lote].qtd = parseFloat((somaLotePA[p.lote].qtd + (p.camaraFria||0)).toFixed(2));
     });
@@ -12646,7 +12852,7 @@ window._sincronizarProdutosAcabadosDeFichas = function() {
     var chavesValidas = {};
 
     fichas.forEach(function(f) {
-        var envs = f.envases || [];
+        var envs = ((f.envases && f.envases.length) ? f.envases : window._r8EnvasesDeTransferencia(f)).map(window._r8ComCodigoEnvase);
         if (!envs.length) return;
 
         // Agrupa por UNIDADE FÍSICA DA EMBALAGEM: cada barril específico
@@ -12676,7 +12882,7 @@ window._sincronizarProdutosAcabadosDeFichas = function() {
                     lote: f.lote, estilo: f.estilo || '', tipoEmbalagem: g.tipo,
                     embalagemCodigo: g.embalagemCodigo, embalagemDescricao: g.embalagemDescricao,
                     dataEnvase: g.ultimaData || f.dataProducao || '',
-                    quantidade: totalVol, localizacao: 'Câmara Fria',
+                    quantidade: totalVol, localizacao: (window._r8LocalizacaoEnvase(g.tipo) || 'Câmara Fria'),
                     status: totalVol === 0 ? 'Esgotado' : (totalVol < 10 ? 'Baixo' : 'Disponível'),
                     pdv: 0, camaraFria: totalVol, taps: 0
                 });
@@ -12872,7 +13078,7 @@ function atualizarTabelaProdutoAcabado(){
     if (typeof window._r8LimparFantasmasSilencioso === 'function') window._r8LimparFantasmasSilencioso();
     window._sincronizarProdutosAcabadosDeFichas();
     var elSaldoResPA = document.getElementById('saldoResumoProdutoAcabado');
-    if (elSaldoResPA) elSaldoResPA.innerHTML = _htmlSaldoDestaquePA();
+    if (elSaldoResPA) elSaldoResPA.innerHTML = window._htmlSaldoCardsPA();
     var elMovResPA = document.getElementById('movResumoProdutoAcabado');
     if (elMovResPA) elMovResPA.innerHTML = _htmlMovimentacoesResumo('produtoAcabado');
 
@@ -12913,7 +13119,7 @@ function atualizarTabelaProdutoAcabado(){
     // Três cards: litros em TAPs, em PDVs e disponíveis na Câmara Fria
     var totalCamaraFria=0, totalPdvKpi=0, totalTapKpi=0;
     lotesResumo.forEach(function(l){
-        totalCamaraFria += l.totalCamaraFria;
+        totalCamaraFria += (l.itens || []).reduce(function(a, it) { return a + (window._r8EhEnvaseNaoBarril(it) ? 0 : (it.camaraFria || 0)); }, 0);
         totalPdvKpi     += l.totalPdv;
         totalTapKpi     += l.totalTaps;
     });
@@ -12922,6 +13128,7 @@ function atualizarTabelaProdutoAcabado(){
     if(kTap) kTap.textContent = (Math.round(totalTapKpi*10)/10).toFixed(1);
     if(kPdv) kPdv.textContent = (Math.round(totalPdvKpi*10)/10).toFixed(1);
     if(kCF)  kCF.textContent  = totalCamaraFria.toFixed(1);
+    if (window._renderEnvasadoPA) window._renderEnvasadoPA();
     var c=document.getElementById('corpoTabelaProdutoAcabado');if(!c)return;
     if(!lotesResumo.length){
         c.innerHTML='<div class="card-item" style="text-align:center;padding:32px;color:#94a3b8"><i class="fas fa-beer" style="font-size:32px;display:block;margin-bottom:10px;color:#cbd5e1"></i>Nenhum produto acabado encontrado</div>';
@@ -12939,7 +13146,7 @@ function atualizarTabelaProdutoAcabado(){
             var rotulo = R8.esc(it.tipoEmbalagem||'—') + (it.embalagemCodigo ? ' [' + R8.esc(it.embalagemCodigo) + ']' : '');
             var dataItem = formatarData(it.dataEnvase)||'—';
             var partes = [];
-            if ((it.camaraFria||0) > 0) partes.push('<span style="color:#0369a1;font-weight:700">Câmara Fria ' + (it.camaraFria||0).toFixed(1) + 'L</span>');
+            if ((it.camaraFria||0) > 0 && !window._r8EhEnvaseNaoBarril(it)) partes.push('<span style="color:#0369a1;font-weight:700">Câmara Fria ' + (it.camaraFria||0).toFixed(1) + 'L</span>');
             if ((it.pdv||0) > 0) partes.push('<span style="color:#c49a2b;font-weight:700">PDV ' + (it.pdv||0).toFixed(1) + 'L</span>');
             if ((it.taps||0) > 0) partes.push('<span style="color:#7c3aed;font-weight:700">TAP ' + (it.taps||0).toFixed(1) + 'L</span>');
             if ((it.descartado||0) > 0) partes.push('<span style="color:#991b1b;font-weight:700">Descarte ' + (it.descartado||0).toFixed(1) + 'L</span>');
@@ -13120,7 +13327,7 @@ function salvarVendaPDV(){
     if(!darBaixaEstoque(loteChave,qtd,'PDV',destino))return;
     if(!dadosERP.vendasPDV)dadosERP.vendasPDV=[];
     var novaVendaId='V'+Date.now()+Math.random().toString(36).slice(2,7);
-    dadosERP.vendasPDV.push({id:novaVendaId,tipo:'PDV',lote,tipoEmbalagem:prod.tipoEmbalagem||'',embalagemCodigo:prod.embalagemCodigo||'',embalagemDescricao:prod.embalagemDescricao||'',data,destino,estilo:prod.estilo,quantidade:qtd,precoPorLitro:preco,valorTotal:(qtd*preco),pagamento,observacoes:obs});
+    dadosERP.vendasPDV.push({id:novaVendaId,tipo:'PDV',lote,tipoEmbalagem:prod.tipoEmbalagem||'',embalagemCodigo:prod.embalagemCodigo||'',embalagemDescricao:prod.embalagemDescricao||'',data,destino,clienteId:(document.getElementById('vendaCliIdPDV')?.value||null),estilo:prod.estilo,quantidade:qtd,precoPorLitro:preco,valorTotal:(qtd*preco),pagamento,observacoes:obs});
     if(document.getElementById('vendaParcialPDV')?.checked) dadosERP.vendasPDV[dadosERP.vendasPDV.length-1].parcial=true;
     _r8CriarVendaFinanceiraAutomatica(novaVendaId,data,qtd*preco,pagamento,'Venda PDV — Lote '+lote+(destino?' — '+destino:''));
     salvarDadosLocal();
@@ -13143,10 +13350,12 @@ function salvarVendaTAP(){
     let partes=loteChave.split('|');let lote=partes[0];let chaveEmb=partes.length>1?partes[1]:null;
     let prod=chaveEmb!==null?dadosERP.produtosAcabados.find(function(p){return p.lote===lote&&(p.embalagemCodigo||p.tipoEmbalagem||'')===chaveEmb;}):dadosERP.produtosAcabados.find(function(p){return p.lote===lote;});
     if(!prod){R8.toast.erro('Lote/embalagem não encontrado.');return;}
-    if(!darBaixaEstoque(loteChave,qtd,'TAP','TAPs Brewpub'))return;
+    let _destTAP=(document.getElementById('vendaNomeTAP')?.value||'').trim();
+    if(!_destTAP){R8.toast.aviso('Selecione o cliente da transferência.');return;}
+    if(!darBaixaEstoque(loteChave,qtd,'TAP',_destTAP))return;
     if(!dadosERP.vendasTaps)dadosERP.vendasTaps=[];
     var novaVendaId='V'+Date.now()+Math.random().toString(36).slice(2,7);
-    dadosERP.vendasTaps.push({id:novaVendaId,tipo:'TAP',lote,tipoEmbalagem:prod.tipoEmbalagem||'',embalagemCodigo:prod.embalagemCodigo||'',embalagemDescricao:prod.embalagemDescricao||'',data,estilo:prod.estilo,quantidade:qtd,precoPorLitro:preco,valorTotal:(qtd*preco),pagamento,observacoes:obs,saldoCamaraFriaApos:prod.camaraFria});
+    dadosERP.vendasTaps.push({id:novaVendaId,tipo:'TAP',lote,tipoEmbalagem:prod.tipoEmbalagem||'',embalagemCodigo:prod.embalagemCodigo||'',embalagemDescricao:prod.embalagemDescricao||'',data,destino:_destTAP,clienteId:(document.getElementById('vendaCliIdTAP')?.value||null),estilo:prod.estilo,quantidade:qtd,precoPorLitro:preco,valorTotal:(qtd*preco),pagamento,observacoes:obs,saldoCamaraFriaApos:prod.camaraFria});
     if(document.getElementById('vendaParcialTAP')?.checked) dadosERP.vendasTaps[dadosERP.vendasTaps.length-1].parcial=true;
     _r8CriarVendaFinanceiraAutomatica(novaVendaId,data,qtd*preco,pagamento,'Venda TAP — Lote '+lote);
     salvarDadosLocal();
@@ -19092,6 +19301,16 @@ if(document.readyState === 'loading'){
         <div id="listaUsuariosGerenciar"></div>
     </div>
 
+    <div id="telaClientes" class="tela">
+        <div class="hdr"><div class="hdr-linha1"><button class="btn-tela-voltar" onclick="irParaTelaERP('telaSubCadastros')"><i class="fas fa-arrow-left"></i> Voltar</button><h2>Clientes</h2></div></div>
+        <div style="display:flex;gap:6px;margin:10px 0 14px">
+            <button id="tabCliAssin" class="btn-backup" style="flex:1" onclick="window._cliTab('ASSINANTE')">Assinantes</button>
+            <button id="tabCliPDV" class="btn-backup" style="flex:1" onclick="window._cliTab('PDV')">PDV</button>
+            <button id="tabCliTAP" class="btn-backup" style="flex:1" onclick="window._cliTab('TAP')">TAP</button>
+        </div>
+        <div id="conteudoClientes"></div>
+    </div>
+
     <div id="telaControleEmbalagens" class="tela">
         <div class="hdr"><div class="hdr-linha1"><button class="btn-tela-voltar" onclick="irParaTelaERP('telaGestao')"><i class="fas fa-arrow-left"></i> Voltar</button><h2>Controle Embalagens</h2></div><div class="hdr-acoes"><button class="btn-tela-pdf" onclick="irParaTelaERP('telaBarris')"><i class="fas fa-burn"></i> Cadastro</button></div></div>
         <div id="kpisControleEmbalagens" style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0"></div>
@@ -19114,7 +19333,8 @@ if(document.readyState === 'loading'){
             <div class="card-sub" onclick="irParaTelaERP('telaSais')"><i class="fas fa-flask"></i><span>Sais</span></div>
             <div class="card-sub" onclick="irParaTelaERP('telaLimpeza')"><i class="fas fa-pump-soap" style="color:#06b6d4"></i><span>Higienizantes/Sanitizantes</span></div>
             <div class="card-sub" onclick="irParaTelaERP('telaBarris')"><i style="color:#92400e"><svg viewBox="0 0 24 24" style="width:1em;height:1em;vertical-align:-0.125em" aria-hidden="true"><path fill="currentColor" d="M1.5 8Q5.5 5.4 9.5 8V20Q5.5 22.6 1.5 20Z"/><path d="M1.6 11.2Q5.5 8.8 9.4 11.2M1.6 17Q5.5 19.6 9.4 17" stroke="#f9f7f4" stroke-width=".9" fill="none"/><rect x="11.6" y="2.2" width="2.4" height="4.4" rx=".6" fill="currentColor"/><rect x="10.6" y="6.4" width="4.4" height="15.2" rx="1.2" fill="currentColor"/><rect x="16.4" y="7.4" width="6.2" height="1.8" rx=".6" fill="currentColor"/><rect x="16.6" y="9" width="5.8" height="12.6" rx=".8" fill="currentColor"/><path d="M16.6 13.2h5.8M16.6 17.6h5.8" stroke="#f9f7f4" stroke-width=".8"/></svg></i><span>Embalagens p/ Envase</span></div>
-        </div>
+
+            <div class="card-sub" onclick="irParaTelaERP('telaClientes')"><i class="fas fa-address-book" style="color:#c49a2b"></i><span>Clientes</span></div>        </div>
     </div>
 
     <div id="telaGestao" class="tela">
@@ -19291,6 +19511,7 @@ if(document.readyState === 'loading'){
             <div class="estoque-kpi ok"><div class="estoque-kpi-valor" id="kpiPAPdv">—</div><div class="estoque-kpi-label">PDV (L)</div></div>
             <div class="estoque-kpi ok"><div class="estoque-kpi-valor" id="kpiPACamaraFria">—</div><div class="estoque-kpi-label">Câmara Fria (L)</div></div>
         </div>
+        <div id="envasadoPA"></div>
         <!-- Saldo Atual -->
         <div style="display:flex;align-items:center;gap:8px;font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1.5px;color:#1e293b;margin:18px 0 10px;padding-bottom:6px;border-bottom:1px solid #e2e8f0"><i class="fas fa-layer-group" style="color:#64748b;font-size:18px"></i>SALDO ATUAL</div>
         <div style="background:#fff;border:1px solid #eee;border-radius:12px;overflow:hidden" id="saldoResumoProdutoAcabado"></div>
@@ -19298,12 +19519,12 @@ if(document.readyState === 'loading'){
         <div style="font-weight:800;color:#2c1810;margin:14px 0 6px;font-size:14px"><i class="fas fa-exchange-alt" style="color:#3b82f6;margin-right:6px"></i>Movimentações</div>
         <div style="background:#fff;border:1px solid #eee;border-radius:12px;overflow:hidden;max-height:320px;overflow-y:auto" id="movResumoProdutoAcabado"></div>
         <!-- Filtros -->
-        <div class="filtros-estoque">
+        <div class="filtros-estoque" style="display:none">
             <div class="campo-linha"><label>Buscar</label><div class="busca-wrap"><input type="text" id="buscaProdutoAcabado" placeholder="Lote, estilo..." style="font-size:12.5px" oninput="atualizarTabelaProdutoAcabado()" autocomplete="off"><div class="busca-dropdown" id="ddBuscaProdutoAcabado"></div></div></div>
             <div class="campo-linha"><label>Localização</label><select id="filtroLocalizacaoProduto" onchange="atualizarTabelaProdutoAcabado()"><option value="">Todas</option><option>Câmara Fria</option><option>PDV</option><option>TAPs Brewpub</option></select></div>
         </div>
         <!-- Cards -->
-        <div id="corpoTabelaProdutoAcabado"></div>
+        <div id="corpoTabelaProdutoAcabado" style="display:none"></div>
     </div>
 
     <div id="telaEstoqueLimpeza" class="tela">
@@ -19928,7 +20149,26 @@ if(document.readyState === 'loading'){
         <div class="grid-sub">
             <div class="card-sub" onclick="irParaTelaERP('telaVendasPDV')"><i class="fas fa-store"></i><span>PDV</span><small>Venda — Ponto de Distribuição</small></div>
             <div class="card-sub" onclick="irParaTelaERP('telaVendasTAP')"><i class="fas fa-beer"></i><span>TAP</span><small>Transferência — Brewpub</small></div>
+            <div class="card-sub" onclick="irParaTelaERP('telaVendasAssinantes')"><i class="fas fa-user-check"></i><span>Assinantes</span><small>Entrega — Clube</small></div>
         </div>
+    </div>
+
+    <div id="telaVendasAssinantes" class="tela">
+        <div class="hdr"><div class="hdr-linha1"><button class="btn-tela-voltar" onclick="irParaTelaERP('telaVendas')"><i class="fas fa-arrow-left"></i> Voltar</button><h2>Assinantes</h2></div><div class="hdr-acoes"></div></div>
+        <button class="btn-add-item" onclick="mostrarFormERP('formVendaAssinante')"><i class="fas fa-plus-circle"></i> Registrar Entrega ao Assinante</button>
+        <div id="formVendaAssinante" class="venda-secao form-flutuante"><h3><i class="fas fa-user-check"></i> Registrar Entrega ao Assinante</h3>
+            <div class="campo-linha"><label>Lote *</label><select id="vendaLoteASS" required></select></div>
+            <div class="campo-linha"><label>Estilo</label><input type="text" id="vendaEstiloASS" readonly placeholder="Preenchido automaticamente"></div>
+            <div class="campo-linha"><label>Assinante *</label><select id="vendaCliASS" onchange="window._vendaCliSel('ASS')" required></select></div>
+            <input type="hidden" id="vendaNomeASS">
+            <input type="hidden" id="vendaCliIdASS">
+            <div class="campo-linha"><label>Data *</label><input type="date" id="vendaDataASS" required></div>
+            <div class="campo-linha"><label>Quantidade (latas) *</label><input type="number" step="1" min="1" id="vendaQtdeASS" placeholder="0" oninput="window._vendaAssCalc()" required></div>
+            <div class="campo-linha"><label>Quantidade (L)</label><input type="text" id="vendaQtdeLASS" readonly placeholder="Calculado: latas × 473 ml"></div>
+            <div class="campo-linha"><label>Observações</label><input type="text" id="vendaObsASS" placeholder="Opcional"></div>
+            <button class="btn-salvar" onclick="salvarVendaAssinante()"><i class="fas fa-check-circle"></i> Salvar Venda PDV</button>
+        </div>
+        <div id="listaVendasAssinante"></div>
     </div>
 
     <div id="telaVendasPDV" class="tela">
@@ -19938,7 +20178,9 @@ if(document.readyState === 'loading'){
             <div class="campo-linha"><label>Lote *</label><select id="vendaLotePDV" required></select></div>
             <div class="campo-linha"><label>Estilo</label><input type="text" id="vendaEstiloPDV" readonly placeholder="Preenchido automaticamente"></div>
             <div class="campo-linha"><label>Data Saída *</label><input type="date" id="vendaDataPDV" required></div>
-            <div class="campo-linha"><label>Destino *</label><input type="text" id="vendaNomePDV" placeholder="Ex: Supermercado Centro" required></div>
+            <div class="campo-linha"><label>Cliente *</label><select id="vendaCliPDV" onchange="window._vendaCliSel('PDV')" required></select></div>
+            <input type="hidden" id="vendaNomePDV">
+            <input type="hidden" id="vendaCliIdPDV">
             <div class="campo-linha"><label>Quantidade (L) *</label><input type="number" step="0.1" id="vendaQtdePDV" placeholder="0" oninput="_calcTotalVendaPDV()" required></div>
             <div class="campo-linha"><label style="display:flex;gap:8px;align-items:flex-start;font-weight:600;font-size:12.5px;cursor:pointer"><input type="checkbox" id="vendaParcialPDV" style="width:auto;margin-top:2px"><span>Venda parcial — o barril continua disponível com o saldo restante<br><small style="font-weight:500;color:#7a6a5a">Desmarcado: o barril sai da lista de vendas depois desta venda (como sempre foi).</small></span></label></div>
             <div class="linha-dupla"><div><label>Preço p/ Litro (R$)</label><input type="text" inputmode="decimal" id="vendaPrecoPDV" placeholder="R$ 0,00" oninput="R8.mascaraMoeda(this);_calcTotalVendaPDV()"></div><div><label>Total (R$)</label><input type="text" id="vendaTotalPDV" placeholder="Auto" readonly style="background:#f0fdf4;font-weight:700"></div></div>
@@ -19961,6 +20203,9 @@ if(document.readyState === 'loading'){
         <button class="btn-add-item" onclick="mostrarFormERP('formVendaTAP')"><i class="fas fa-plus-circle"></i> Registrar Transferência</button>
         <div id="formVendaTAP" class="venda-secao form-flutuante"><h3><i class="fas fa-beer"></i> Registrar Transferência</h3>
             <div class="campo-linha"><label>Lote *</label><select id="vendaLoteTAP" required></select></div>
+            <div class="campo-linha"><label>Cliente *</label><select id="vendaCliTAP" onchange="window._vendaCliSel('TAP')" required></select></div>
+            <input type="hidden" id="vendaNomeTAP">
+            <input type="hidden" id="vendaCliIdTAP">
             <div class="campo-linha"><label>Estilo</label><input type="text" id="vendaEstiloTAP" readonly placeholder="Preenchido automaticamente"></div>
             <div class="campo-linha"><label>Data *</label><input type="date" id="vendaDataTAP" required></div>
             <div class="campo-linha"><label>Quantidade (L) *</label><input type="number" step="0.1" id="vendaQtdeTAP" placeholder="0" oninput="_calcTotalVendaTAP()" required></div>
@@ -20206,6 +20451,17 @@ if(document.readyState === 'loading'){
             <div class="hdr-linha1">
                 <button class="btn-tela-voltar" onclick="irParaTelaERP('telaMenu')"><i class="fas fa-arrow-left"></i> Voltar</button><h2>Relatórios</h2></div>
             <div class="hdr-acoes"></div>
+        </div>
+
+        <div style="font-size:10px;font-weight:700;color:#2c1810;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">👥 Clientes</div>
+
+        <div class="rel-card">
+            <div class="rel-ico" style="background:#dcfce7"><i class="fas fa-address-book" style="color:#15803d"></i></div>
+            <div style="flex:1;min-width:0">
+                <div style="font-weight:700;font-size:13px;color:#2c1810">Clientes — PDV, TAP e Assinantes</div>
+                <div style="font-size:12px;color:#888;margin-top:2px">Cadastro completo, separado por PDV, TAP e Assinantes, com endereço e situação.</div>
+                <button class="rel-btn" style="background:#15803d;color:#fff" onclick="window.gerarPDFClientes()"><i class="fas fa-file-pdf"></i> Gerar PDF</button>
+            </div>
         </div>
 
         <!-- Produção -->
@@ -23705,6 +23961,411 @@ window._R8_BJCP = [{"d":"Altbier","s":"Também: Alt. OG 1.044 a 1.052, IBU 25 a 
     window.addEventListener('load', function(){ window._r8AjustarTextos(); });
     window.addEventListener('resize', function(){ window._r8AjustarTextos(); });
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(function(){ window._r8AjustarTextos(); });
+})();
+</script>
+<style id="r8-clientes-css">
+#telaClientes .cli-form{display:flex;flex-direction:column;max-width:560px;margin:0 auto}
+#telaClientes .cli-titulo{font-family:'Bebas Neue',cursive;font-weight:400;font-size:clamp(22px,7vw,36px);letter-spacing:1px;color:#2c1810;display:flex;align-items:center;gap:10px;margin:14px 0 4px;line-height:1}
+#telaClientes .cli-titulo i{font-size:.8em}
+#telaClientes .cli-secao{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#c49a2b;font-size:15px;margin:22px 0 12px}
+#telaClientes .cli-secao::after{content:'';flex:1;height:1px;background:#e5d9bd}
+#telaClientes .cli-secao i{width:18px;text-align:center}
+#telaClientes .cli-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+#telaClientes .cli-full{grid-column:1/-1}
+#telaClientes .cli-campo{margin-bottom:12px}
+#telaClientes .cli-campo input{width:100%;box-sizing:border-box;height:58px;padding:0 12px;border:2px solid #e5d9bd;border-radius:16px;background:#fff;font-family:Roboto,Arial,sans-serif;font-size:15px;font-weight:700;color:#2c1810;outline:none}
+#telaClientes .cli-campo input::placeholder{color:#c4474a;font-style:italic;font-weight:700;opacity:1}
+#telaClientes .cli-campo input:focus{border-color:#c49a2b}
+#telaClientes .cli-btn{width:100%;height:56px;border:none;border-radius:14px;background:#c49a2b;color:#fff;font-family:'Montserrat',sans-serif;font-weight:700;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:8px}
+#telaClientes .cli-btn-principal{font-size:17px}
+#telaClientes .cli-btn:hover{background:#a87f1f}
+#telaClientes .cli-cancelar{display:block;width:100%;background:none;border:none;font-family:Roboto,Arial,sans-serif;font-size:18px;color:#2c1810;margin-top:12px;padding:8px;cursor:pointer}
+@media(max-width:360px){#telaClientes .cli-campo input{font-size:13px}}
+</style>
+<script id="r8-clientes">
+(function(){
+    'use strict';
+    var PEND = 'erp/rota8cervejaria/dados/clientes_pendentes';
+    var CLI  = 'erp/rota8cervejaria/dados/clientes';
+    var aba = 'ASSINANTE';
+    var pendentes = [];
+    var editandoId = null;
+    var CAMPOS = [
+        ['nome', 'Nome *', 'text'], ['documento', 'CPF/CNPJ', 'text'], ['celular', 'Celular', 'text'],
+        ['cep', 'CEP', 'text'], ['rua', 'Rua', 'text'], ['numero', 'Nº', 'text'], ['bairro', 'Bairro', 'text'],
+        ['cidade', 'Cidade', 'text'], ['observacoes', 'Observações', 'text']
+    ];
+
+    function esc(s) { return (window.R8 && R8.esc) ? R8.esc(s) : String(s == null ? '' : s); }
+    function brl(v) { return 'R$ ' + (Number(v) || 0).toFixed(2).replace('.', ','); }
+    function todos() {
+        var c = (typeof dadosERP !== 'undefined' && dadosERP.clientes) || [];
+        return (Array.isArray(c) ? c : Object.values(c)).filter(Boolean);
+    }
+    function endereco(p) {
+        return [p.rua, p.numero].filter(Boolean).join(', ') + ' - ' + (p.bairro || '') + ' - ' + (p.cidade || '') + (p.cep ? ' - CEP ' + p.cep : '');
+    }
+    function salvarTudo() {
+        if (typeof salvarDadosFirebase === 'function') salvarDadosFirebase();
+    }
+
+    window._renderClientes = function() {
+        ['ASSINANTE', 'PDV', 'TAP'].forEach(function(t) {
+            var b = document.getElementById('tabCli' + (t === 'ASSINANTE' ? 'Assin' : t));
+            if (b) {
+                b.style.background = (t === aba) ? '#2c1810' : '#fff';
+                b.style.color = (t === aba) ? '#f0c674' : '#6b5847';
+            }
+        });
+        var box = document.getElementById('conteudoClientes');
+        if (!box) return;
+        if (aba === 'ASSINANTE') return carregarAssinantes(box);
+        pintarCadastro(box);
+    };
+    window._cliTab = function(t) { aba = t; editandoId = null; window._renderClientes(); };
+
+    // ── ASSINANTES: fila de pagamento (Firebase) + ativos (ERP) ──
+    function carregarAssinantes(box) {
+        var db = window.db;
+        if (!db) { box.innerHTML = '<p style="text-align:center;color:#7a6a5a">Firebase indisponível no momento.</p>'; pintarAssinantes(box); return; }
+        db.ref(PEND).once('value').then(function(snap) {
+            var v = snap.val() || {};
+            pendentes = Object.keys(v).map(function(id) { return Object.assign({ _id: id }, v[id]); })
+                .filter(function(x) { return x.status === 'pendente'; })
+                .sort(function(a, b) { return String(b.criadoEm || '').localeCompare(String(a.criadoEm || '')); });
+            pintarAssinantes(box);
+        }).catch(function(e) {
+            box.innerHTML = '<p style="color:#b91c1c">Erro ao carregar pedidos: ' + esc((e && e.message) || e) + '</p>';
+        });
+    }
+
+    function pintarAssinantes(box) {
+        var h = '<div style="font-weight:800;font-size:13px;color:#2c1810;margin:4px 0 8px">Aguardando pagamento (Pix)</div>';
+        if (!pendentes.length) h += '<p style="color:#7a6a5a;font-size:13px;margin-bottom:14px">Nenhum pedido aguardando pagamento.</p>';
+        h += pendentes.map(function(p) {
+            return '<div style="background:#fff;border:1px solid #f0e4c0;border-radius:14px;padding:14px;margin-bottom:12px">'
+                + '<div style="font-weight:800;font-size:15px;color:#2c1810">' + esc(p.nome) + '</div>'
+                + '<div style="font-size:12px;color:#7a6a5a;margin-top:2px">' + esc(p.plano) + ' · ' + esc(p.remessas) + ' remessa(s)</div>'
+                + '<div style="font-size:12px;color:#2c1810;margin-top:8px;line-height:1.5">CPF: ' + esc(p.cpf) + '<br>Celular: ' + esc(p.celular) + '<br>' + esc(endereco(p)) + '</div>'
+                + '<div style="font-size:12px;color:#2c1810;margin-top:6px">Frete: ' + esc(p.frete_modalidade) + ' · Total: ' + brl(p.total) + '</div>'
+                + '<div style="font-size:10.5px;color:#a08f6f;margin-top:4px">Recebido em ' + esc(String(p.criadoEm || '').slice(0, 16).replace('T', ' ')) + '</div>'
+                + '<div style="display:flex;gap:8px;margin-top:10px">'
+                +   '<button onclick="window._r8AprovarAssinante(\'' + esc(p._id) + '\')" style="flex:1;padding:9px;background:#15803d;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer">Pagamento confirmado: aprovar</button>'
+                +   '<button onclick="window._r8RejeitarAssinante(\'' + esc(p._id) + '\')" style="flex:1;padding:9px;background:#fff;color:#b91c1c;border:1px solid #fecaca;border-radius:8px;font-weight:700;cursor:pointer">Rejeitar</button>'
+                + '</div></div>';
+        }).join('');
+        var ativos = todos().filter(function(c) { return c.tipo === 'ASSINANTE' && c.ativo !== false; });
+        h += '<div style="font-weight:800;font-size:13px;color:#2c1810;margin:18px 0 8px">Assinantes ativos (' + ativos.length + ')</div>';
+        if (!ativos.length) h += '<p style="color:#7a6a5a;font-size:13px">Nenhum assinante ativo ainda.</p>';
+        h += ativos.map(function(c) {
+            return '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:12px;margin-bottom:8px">'
+                + '<div style="font-weight:700;color:#2c1810">' + esc(c.nome) + '</div>'
+                + '<div style="font-size:12px;color:#7a6a5a">' + esc(c.plano) + ' · ' + esc(endereco(c)) + '</div>'
+                + '<button onclick="window._cliInativar(\'' + esc(c.id) + '\')" style="margin-top:8px;padding:6px 10px;background:#fff;color:#b91c1c;border:1px solid #fecaca;border-radius:8px;font-size:12px;cursor:pointer">Inativar</button>'
+                + '</div>';
+        }).join('');
+        box.innerHTML = h;
+    }
+
+    // ── PDV e TAP: cadastro manual ──
+    function pintarCadastro(box) {
+        if (editandoId !== null) return pintarFormulario(box);
+        var lista = todos().filter(function(c) { return c.tipo === aba; });
+        var h = '<button onclick="window._cliNovo()" style="width:100%;padding:10px;background:#c49a2b;color:#1a0f08;border:none;border-radius:10px;font-weight:800;cursor:pointer;margin-bottom:12px">+ Novo cliente ' + aba + '</button>';
+        if (!lista.length) h += '<p style="color:#7a6a5a;font-size:13px;text-align:center">Nenhum cliente ' + aba + ' cadastrado.</p>';
+        h += lista.map(function(c) {
+            var inativo = c.ativo === false;
+            return '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:12px;margin-bottom:8px;' + (inativo ? 'opacity:.55' : '') + '">'
+                + '<div style="font-weight:700;color:#2c1810">' + esc(c.nome) + (inativo ? ' <small>(inativo)</small>' : '') + '</div>'
+                + '<div style="font-size:12px;color:#7a6a5a">' + esc(endereco(c)) + (c.celular ? ' · ' + esc(c.celular) : '') + (aba === 'TAP' && c.prazoBarrilDias ? ' · prazo barril: ' + esc(c.prazoBarrilDias) + ' dias' : '') + '</div>'
+                + '<div style="display:flex;gap:8px;margin-top:8px">'
+                +   '<button onclick="window._cliEditar(\'' + esc(c.id) + '\')" style="padding:6px 12px;background:#2c1810;color:#f0c674;border:none;border-radius:8px;font-size:12px;cursor:pointer">Editar</button>'
+                +   (inativo ? '' : '<button onclick="window._cliInativar(\'' + esc(c.id) + '\')" style="padding:6px 12px;background:#fff;color:#b91c1c;border:1px solid #fecaca;border-radius:8px;font-size:12px;cursor:pointer">Inativar</button>')
+                + '</div></div>';
+        }).join('');
+        box.innerHTML = h;
+    }
+
+    function pintarFormulario(box) {
+        var c = todos().find(function(x) { return x.id === editandoId; }) || {};
+        var novo = editandoId === 'novo';
+        var v = function(k) { return esc(c[k] || ''); };
+        var titulo = (novo ? 'Novo cliente ' : 'Editar cliente ') + aba;
+        var h = '<div class="cli-form">'
+          + '<h3 class="cli-titulo"><i class="fas fa-address-book"></i> ' + esc(titulo.toUpperCase()) + '</h3>'
+          + '<div class="cli-secao"><i class="fas fa-user"></i> Dados</div>'
+          + '<div class="cli-campo cli-full"><input id="cli_nome" type="text" placeholder="Nome completo *" value="' + v('nome') + '"></div>'
+          + '<div class="cli-grid">'
+          +   '<div class="cli-campo"><input id="cli_documento" type="text" placeholder="CPF/CNPJ" inputmode="numeric" value="' + v('documento') + '"></div>'
+          +   '<div class="cli-campo"><input id="cli_celular" type="text" placeholder="Celular/WhatsApp" inputmode="tel" value="' + v('celular') + '"></div>'
+          + '</div>'
+          + '<div class="cli-secao"><i class="fas fa-location-dot"></i> Endereço</div>'
+          + '<div class="cli-grid">'
+          +   '<div class="cli-campo"><input id="cli_cep" type="text" placeholder="CEP" inputmode="numeric" value="' + v('cep') + '"></div>'
+          +   '<div class="cli-campo"><input id="cli_cidade" type="text" placeholder="Cidade / UF" value="' + v('cidade') + '"></div>'
+          + '</div>'
+          + '<div class="cli-campo cli-full"><input id="cli_rua" type="text" placeholder="Rua / Avenida" value="' + v('rua') + '"></div>'
+          + '<div class="cli-grid">'
+          +   '<div class="cli-campo"><input id="cli_numero" type="text" placeholder="Número" inputmode="numeric" value="' + v('numero') + '"></div>'
+          +   '<div class="cli-campo"><input id="cli_bairro" type="text" placeholder="Bairro" value="' + v('bairro') + '"></div>'
+          + '</div>';
+        if (aba === 'TAP') {
+            h += '<div class="cli-secao"><i class="fas fa-beer"></i> Barril</div>'
+              + '<div class="cli-campo cli-full"><input id="cli_prazoBarrilDias" type="number" min="1" placeholder="Prazo do barril em dias" value="' + esc(c.prazoBarrilDias || 30) + '"></div>';
+        }
+        h += '<div class="cli-secao"><i class="fas fa-note-sticky"></i> Observações</div>'
+          + '<div class="cli-campo cli-full"><input id="cli_observacoes" type="text" placeholder="Observações" value="' + v('observacoes') + '"></div>'
+          + '<button type="button" class="cli-btn cli-btn-principal" onclick="window._cliSalvar()"><i class="fas fa-check"></i> Salvar cliente</button>'
+          + '<button type="button" class="cli-cancelar" onclick="window._cliCancelar()">Cancelar</button>'
+          + '</div>';
+        box.innerHTML = h;
+    }
+
+    window._cliNovo = function() { editandoId = 'novo'; window._renderClientes(); };
+    window._cliEditar = function(id) { editandoId = id; window._renderClientes(); };
+    window._cliCancelar = function() { editandoId = null; window._renderClientes(); };
+
+    window._cliSalvar = function() {
+        if (!window._r8ExigirAdmin('Cadastrar clientes é restrito a Administradores.')) return;
+        var v = {};
+        CAMPOS.forEach(function(f) { v[f[0]] = (document.getElementById('cli_' + f[0]) || {}).value || ''; });
+        v.nome = v.nome.trim();
+        if (!v.nome) { R8.toast.aviso('Informe o nome do cliente.'); return; }
+        var arr = todos();
+        if (editandoId === 'novo') {
+            v.id = 'CLI_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+            v.tipo = aba; v.ativo = true; v.criadoEm = new Date().toISOString();
+            if (aba === 'TAP') v.prazoBarrilDias = parseInt((document.getElementById('cli_prazoBarrilDias') || {}).value, 10) || 30;
+            arr.push(v);
+        } else {
+            var c = arr.find(function(x) { return x.id === editandoId; });
+            if (!c) return;
+            CAMPOS.forEach(function(f) { c[f[0]] = v[f[0]]; });
+            if (aba === 'TAP') c.prazoBarrilDias = parseInt((document.getElementById('cli_prazoBarrilDias') || {}).value, 10) || 30;
+        }
+        dadosERP.clientes = arr;
+        salvarTudo();
+        R8.toast.ok('Cliente salvo.');
+        editandoId = null;
+        window._renderClientes();
+    };
+
+    window._cliInativar = function(id) {
+        if (!window._r8ExigirAdmin('Inativar clientes é restrito a Administradores.')) return;
+        var arr = todos();
+        var c = arr.find(function(x) { return x.id === id; });
+        if (!c) return;
+        window.confirmarAcao({
+            titulo: 'Inativar cliente',
+            msg: 'Inativar ' + c.nome + '? O histórico de vendas é mantido.',
+            labelOk: 'Inativar',
+            onConfirm: function() {
+                c.ativo = false;
+                dadosERP.clientes = arr;
+                salvarTudo();
+                R8.toast.ok('Cliente inativado.');
+                window._renderClientes();
+            }
+        });
+    };
+
+    // ── Aprovação de assinatura: confirma pagamento e cria o cadastro ──
+    window._r8AprovarAssinante = function(id) {
+        if (!window._r8ExigirAdmin('Aprovar assinantes é restrito a Administradores.')) return;
+        var p = pendentes.find(function(x) { return x._id === id; });
+        if (!p) return;
+        window.confirmarAcao({
+            titulo: 'Confirmar pagamento',
+            msg: 'Confirmou o Pix de ' + p.nome + '? Isso libera o cadastro como assinante para entrega.',
+            labelOk: 'Confirmar',
+            onConfirm: function() {
+                var agora = new Date().toISOString();
+                var cliente = {
+                    id: 'CLI_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+                    tipo: 'ASSINANTE', ativo: true,
+                    nome: p.nome || '', documento: p.cpf || '', celular: p.celular || '',
+                    cep: p.cep || '', cidade: p.cidade || '', rua: p.rua || '', numero: p.numero || '', bairro: p.bairro || '',
+                    plano: p.plano || '', remessas: p.remessas || 0,
+                    origemPendenteId: id, criadoEm: p.criadoEm || agora, aprovadoEm: agora
+                };
+                var db = window.db;
+                db.ref(CLI).transaction(function(atual) {
+                    var arr = Array.isArray(atual) ? atual : (atual ? Object.values(atual) : []);
+                    arr.push(cliente);
+                    return arr;
+                }).then(function(res) {
+                    if (!res.committed) throw new Error('gravação não confirmada');
+                    return db.ref(PEND + '/' + id).update({ status: 'aprovado', aprovadoEm: agora });
+                }).then(function() {
+                    R8.toast.ok('Assinante liberado para entrega.');
+                    window._renderClientes();
+                }).catch(function(e) {
+                    R8.toast.erro('Não foi possível aprovar: ' + ((e && e.message) || e));
+                });
+            }
+        });
+    };
+
+    window._r8RejeitarAssinante = function(id) {
+        if (!window._r8ExigirAdmin('Rejeitar assinantes é restrito a Administradores.')) return;
+        var p = pendentes.find(function(x) { return x._id === id; });
+        if (!p) return;
+        window.confirmarAcao({
+            titulo: 'Rejeitar assinatura',
+            msg: 'Rejeitar a assinatura de ' + p.nome + '? O registro sai da fila.',
+            labelOk: 'Rejeitar',
+            onConfirm: function() {
+                window.db.ref(PEND + '/' + id).update({ status: 'rejeitado', rejeitadoEm: new Date().toISOString() })
+                    .then(function() {
+                        R8.toast.ok('Assinatura rejeitada.');
+                        window._renderClientes();
+                    }).catch(function(e) {
+                        R8.toast.erro('Falha: ' + ((e && e.message) || e));
+                    });
+            }
+        });
+    };
+
+    // ── Seletores de cliente nas vendas (PDV e TAP) ──
+    window._vendaCliPopular = function(canal) {
+        var tipo = { PDV: 'PDV', TAP: 'TAP', ASS: 'ASSINANTE' }[canal];
+        var cliSel = document.getElementById('vendaCli' + canal);
+        if (!cliSel || !tipo) return;
+        var lista = todos().filter(function(c) { return c.tipo === tipo && c.ativo !== false; });
+        cliSel.innerHTML = lista.length
+            ? '<option value="">Selecione o cliente</option>' + lista.map(function(c) {
+                return '<option value="' + esc(c.id) + '">' + esc(c.nome) + (c.cidade ? ' — ' + esc(c.cidade) : '') + '</option>';
+            }).join('')
+            : '<option value="">Nenhum cliente ' + esc(tipo) + ' cadastrado</option>';
+        window._vendaCliSel(canal);
+    };
+    window._r8ListarClientes = todos;
+
+    window._vendaCliSel = function(canal) {
+        var cliSel = document.getElementById('vendaCli' + canal);
+        var c = cliSel ? todos().find(function(x) { return x.id === cliSel.value; }) : null;
+        var nome = document.getElementById('vendaNome' + canal);
+        var cid = document.getElementById('vendaCliId' + canal);
+        if (nome) nome.value = c ? c.nome : '';
+        if (cid) cid.value = c ? c.id : '';
+    };
+
+    // ── Venda/Entrega a Assinantes: cliente vem do cadastro (tipo ASSINANTE) ──
+    window._popularLotesLataASS = function() {
+        var s = document.getElementById('vendaLoteASS');
+        if (!s) return;
+        var E = function(x) { return (window.R8 && R8.esc) ? R8.esc(x) : String(x == null ? '' : x); };
+        var latas = (dadosERP.produtosAcabados || []).filter(function(p) {
+            return (p.tipoEmbalagem || '') === 'Lata' && !p.embalagemCodigo && (p.camaraFria || 0) > 0;
+        });
+        s.innerHTML = latas.length
+            ? '<option value="">Selecione o lote</option>' + latas.map(function(p) {
+                var n = Math.floor((p.camaraFria || 0) / 0.473);
+                return '<option value="' + E(p.lote) + '|Lata" data-estilo="' + E(p.estilo) + '">' + E(p.lote) + ' · ' + E(p.estilo) + ' — ' + n + ' latas disponíveis</option>';
+            }).join('')
+            : '<option value="">Nenhuma lata disponível no envase</option>';
+        s.onchange = function() {
+            var o = this.options[this.selectedIndex];
+            var el = document.getElementById('vendaEstiloASS');
+            if (el) el.value = o ? (o.getAttribute('data-estilo') || '') : '';
+        };
+    };
+
+    window._vendaAssCalc = function() {
+        var u = parseInt(document.getElementById('vendaQtdeASS')?.value, 10);
+        var el = document.getElementById('vendaQtdeLASS');
+        if (el) el.value = (u > 0) ? (u * 473 / 1000).toFixed(3).replace('.', ',') + ' L' : '';
+    };
+
+    window.salvarVendaAssinante = function() {
+        var loteChave = document.getElementById('vendaLoteASS')?.value;
+        var data = document.getElementById('vendaDataASS')?.value;
+        var latas = parseInt(document.getElementById('vendaQtdeASS')?.value, 10);
+        var qtd = Math.round(latas * 473) / 1000; // 473 ml por lata, em litros
+        var obs = (document.getElementById('vendaObsASS')?.value || '').trim();
+        var destino = (document.getElementById('vendaNomeASS')?.value || '').trim();
+        var clienteId = document.getElementById('vendaCliIdASS')?.value || null;
+        if (!loteChave) { R8.toast.aviso('Selecione o lote.'); return; }
+        if (!destino) { R8.toast.aviso('Selecione o assinante.'); return; }
+        if (!data) { R8.toast.aviso('Informe a data.'); return; }
+        if (isNaN(qtd) || qtd <= 0) { R8.toast.aviso('Informe uma quantidade válida.'); return; }
+        var partes = loteChave.split('|');
+        var lote = partes[0];
+        var chaveEmb = partes.length > 1 ? partes[1] : null;
+        var prod = chaveEmb !== null
+            ? dadosERP.produtosAcabados.find(function(p) { return p.lote === lote && (p.embalagemCodigo || p.tipoEmbalagem || '') === chaveEmb; })
+            : dadosERP.produtosAcabados.find(function(p) { return p.lote === lote; });
+        if (!prod) { R8.toast.erro('Lote/embalagem não encontrado.'); return; }
+        if (!darBaixaEstoque(loteChave, qtd, 'ASSINANTE', destino)) return;
+        if (!dadosERP.vendasAssinantes) dadosERP.vendasAssinantes = [];
+        dadosERP.vendasAssinantes.push({
+            id: 'A' + Date.now() + Math.random().toString(36).slice(2, 7),
+            tipo: 'ASSINANTE', lote: lote, tipoEmbalagem: prod.tipoEmbalagem || '',
+            embalagemCodigo: prod.embalagemCodigo || '', data: data, estilo: prod.estilo,
+            quantidadeUn: latas, quantidade: qtd, destino: destino, clienteId: clienteId, observacoes: obs
+        });
+        salvarDadosLocal();
+        document.getElementById('vendaLoteASS').value = '';
+        document.getElementById('vendaEstiloASS').value = '';
+        document.getElementById('vendaCliASS').value = '';
+        document.getElementById('vendaNomeASS').value = '';
+        document.getElementById('vendaCliIdASS').value = '';
+        document.getElementById('vendaQtdeASS').value = '';
+        document.getElementById('vendaQtdeLASS').value = '';
+        document.getElementById('vendaObsASS').value = '';
+        R8.toast.ok('Entrega registrada — ' + destino + ' | Lote: ' + lote + ' | ' + qtd + 'L');
+        window._popularLotesLataASS();
+        fecharFormERP('formVendaAssinante');
+        window._renderListaAssinantes();
+    };
+
+    window._renderListaAssinantes = function() {
+        var box = document.getElementById('listaVendasAssinante');
+        if (!box) return;
+        var lista = (dadosERP.vendasAssinantes || []).slice().reverse().slice(0, 30);
+        if (!lista.length) { box.innerHTML = '<p style="text-align:center;color:#7a6a5a;font-size:13px;padding:12px">Nenhuma entrega registrada ainda.</p>'; return; }
+        box.innerHTML = lista.map(function(v) {
+            return '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:10px 12px;margin-top:8px">'
+                + '<div style="display:flex;justify-content:space-between;gap:8px"><strong>' + esc(v.destino) + '</strong><span>' + (v.quantidadeUn ? esc(v.quantidadeUn) + ' latas · ' : '') + esc(v.quantidade) + ' L</span></div>'
+                + '<div style="font-size:12px;color:#7a6a5a">' + esc(v.data) + ' · Lote ' + esc(v.lote) + ' · ' + esc(v.estilo || '') + '</div>'
+                + '</div>';
+        }).join('');
+    };
+
+    // ── PDF de Clientes: PDV, TAP e Assinantes ──
+    window.gerarPDFClientes = function() {
+        var jsPDFlib = window.jspdf;
+        if (!jsPDFlib) { R8.toast.erro('Biblioteca de PDF indisponível.'); return; }
+        var doc = new jsPDFlib.jsPDF();
+        r8pdfCabecalho(doc, 'Clientes', 'PDV, TAP e Assinantes');
+        var todos = window._r8ListarClientes ? window._r8ListarClientes() : [];
+        var grupos = [
+            { tipo: 'PDV', titulo: 'Clientes PDV', head: ['Nome', 'CPF/CNPJ', 'Celular', 'Endereço', 'Situação'] },
+            { tipo: 'TAP', titulo: 'Clientes TAP', head: ['Nome', 'CPF/CNPJ', 'Celular', 'Endereço', 'Prazo barril', 'Situação'] },
+            { tipo: 'ASSINANTE', titulo: 'Assinantes', head: ['Nome', 'CPF', 'Celular', 'Endereço', 'Plano', 'Situação'] }
+        ];
+        var y = 40;
+        grupos.forEach(function(g) {
+            var itens = todos.filter(function(c) { return c.tipo === g.tipo; });
+            if (y > 250) { doc.addPage(); y = 20; }
+            doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(44, 24, 16);
+            doc.text(g.titulo + ' (' + itens.length + ')', 14, y);
+            var body = itens.map(function(c) {
+                var end = [c.rua, c.numero].filter(Boolean).join(', ') + (c.bairro ? ' - ' + c.bairro : '') + (c.cidade ? ' - ' + c.cidade : '');
+                var sit = c.ativo === false ? 'Inativo' : 'Ativo';
+                var linha = [c.nome || '—', c.documento || '—', c.celular || '—', end || '—'];
+                if (g.tipo === 'TAP') linha.push((c.prazoBarrilDias || 30) + ' dias');
+                if (g.tipo === 'ASSINANTE') linha.push(c.plano || '—');
+                linha.push(sit);
+                return linha;
+            });
+            if (!body.length) body.push(['Nenhum cadastrado'].concat(Array(g.head.length - 1).fill('')));
+            r8pdfAutoTable(doc, { head: [g.head], body: body, startY: y + 3, styles: { fontSize: 7, cellPadding: 2 } });
+            y = (doc.lastAutoTable && doc.lastAutoTable.finalY ? doc.lastAutoTable.finalY : y + 30) + 12;
+        });
+        r8pdfRodape(doc);
+        doc.save('clientes_' + obterData() + '.pdf');
+    };
 })();
 </script>
 </html>
